@@ -55,13 +55,13 @@ State is derived from the inventory plus the accepted events. There is one deriv
 - `result_corrected` needs a reason. It is rejected if it would change who played in any other completed match; otherwise it is applied and the affected pending matches are listed.
 - Event IDs are unique; timestamps and actors are supplied by the caller (the engine never reads the clock).
 
-## Planned optimization approach (milestone 3)
+## Optimization approach (milestone 2, originally labelled milestone 3)
 
 1. Constructive, dependency-aware list scheduling prioritised by remaining critical path.
 2. Seeded local search (move, swap, re-insert) that only accepts moves keeping all hard rules satisfied.
 3. Three strategies as three objective weightings: Fastest Finish (makespan), Balanced Operations (utilisation evenness, court clustering), Player-First (rest, back-to-backs, waiting fairness).
 4. Seeded PRNG plus iteration budget for reproducibility; wall-clock time only as a safety cap.
 5. Every candidate passes through `validateSchedule`; the gap to feasibility lower bounds is reported.
-6. Live rescheduling reuses the same machinery with frozen assignments and a disruption term.
+6. Live rescheduling (milestone 4, originally labelled milestone 5) reuses the same machinery with frozen assignments and a disruption term.
 
 A CP-SAT (OR-Tools) solver remains an option behind the same interface if real instances outgrow heuristics.

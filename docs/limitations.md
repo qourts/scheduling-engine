@@ -10,7 +10,7 @@
 
 ## Known limitations (milestone 1)
 
-- **No product scheduler yet.** The two schedulers under `test/support/` are test fixtures only. Fastest Finish, Balanced Operations and Player-First arrive in milestone 3.
+- **No product scheduler yet.** The two schedulers under `test/support/` are test fixtures only. Fastest Finish, Balanced Operations and Player-First arrive in milestone 2 (originally labelled milestone 3).
 - **Soft constraints are not measured yet** (back-to-backs, fairness, utilisation).
 - **Feasibility is necessary, not sufficient.** Checks are relaxations: the chain bound ignores court contention, capacity ignores dependencies, player load uses the shortest match duration of the player's divisions and merges their windows.
 - **Formats not yet supported:** double elimination, consolation/back-draw brackets, best-third-placed qualification, re-seeding qualifiers by record, more than two stages, pool-play crossovers other than top *k* per group.

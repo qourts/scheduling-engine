@@ -19,7 +19,7 @@ A schedule violating any of these is invalid. Rules involving undecided playoff 
 
 Each violation carries `certainty`: `definite`, or `possible` (occurs for at least one outcome of undecided matches).
 
-## Configurable preferences (planned for milestone 3)
+## Configurable preferences (milestone 2, originally labelled milestone 3)
 
 Measured and optimised, never enforced by the validator:
 

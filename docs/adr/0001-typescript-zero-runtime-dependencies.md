@@ -12,4 +12,4 @@ A strict TypeScript ESM library with no runtime dependencies. Plain JSON-compati
 
 ## Consequences
 
-Runs in Node services, edge functions or the browser. No solver libraries: the optimizer (milestone 3) will be heuristic. A CP-SAT service can be added behind the strategy interface if needed.
+Runs in Node services, edge functions or the browser. No solver libraries: the optimizer (milestone 2, originally labelled milestone 3) will be heuristic. A CP-SAT service can be added behind the strategy interface if needed.

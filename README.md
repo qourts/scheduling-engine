@@ -19,10 +19,13 @@ It is a pure TypeScript library with no runtime dependencies. It does not depend
 | Results, standings, configurable tiebreakers, corrections, audit log | Implemented |
 | Independent hard-constraint schedule validator | Implemented |
 | Feasibility analysis (necessary conditions) with quantified remedies | Implemented |
-| Schedulers: Fastest Finish, Balanced Operations, Player-First | **Planned (milestone 3)** |
-| Soft-constraint metrics and option comparison | **Planned (milestone 3)** |
-| Operator UI | **Planned (milestone 4)** |
-| Live rescheduling | **Planned (milestone 5)**; the validator already supports frozen assignments |
+| Structured scheduling instructions (mandatory constraints and preferences) | **Milestone 2 (in progress)** |
+| Schedulers: Fastest Finish, Balanced Operations, Player-First | **Milestone 2 (in progress)** |
+| Soft-constraint metrics and option comparison | **Milestone 2 (in progress)** |
+| Visual scheduling interface, natural-language instructions, manual schedule editing | **Planned (milestone 3)** |
+| Live rescheduling | **Planned (milestone 4)**; the validator already supports frozen assignments |
+
+Roadmap note: the optimizer was originally labelled milestone 3 and live rescheduling milestone 5. The milestones were renumbered when the roadmap was reorganised, so the optimizer is milestone 2, the visual interface (with natural-language instructions and manual editing) is milestone 3 and live rescheduling is milestone 4. No decisions changed.
 
 The repository contains two **test-only** schedulers (`test/support/`) used to produce positive fixtures. They are not product schedulers.
 
