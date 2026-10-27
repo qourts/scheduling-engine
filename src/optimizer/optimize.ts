@@ -159,6 +159,7 @@ export function optimizeSchedules(inventory: Inventory, options: OptimizeOptions
     if (!reworked) continue;
     const check = verify(inventory, constraints.inventory, constraints.locked, instructions, reworked.state);
     if (!check.valid) continue;
+    if (!isGenuineAlternative(reworked, target.twins, thresholds)) continue;
     const at = verified.findIndex((c) => c.strategy.id === target.strategy.id);
     verified[at] = { ...reworked, attempts: attempt };
   }
@@ -284,6 +285,19 @@ function pickEquivalentTarget(candidates: readonly Candidate[], thresholds: Dist
     if (twins.length > 0) return { strategy: c.strategy, twins };
   }
   return null;
+}
+
+/**
+ * A reworked option only replaces an equivalent one when it offers a real
+ * trade-off: materially different from every twin and never worse than a twin
+ * on every measure. A schedule that merely differs by being worse is not an
+ * alternative.
+ */
+function isGenuineAlternative(reworked: Candidate, twins: readonly Candidate[], thresholds: DistinctnessThresholds): boolean {
+  return twins.every((twin) => {
+    const relation = relate(reworked, twin, thresholds);
+    return relation.materiallyDifferent && relation.dominance !== "b_dominates";
+  });
 }
 
 const blend = (a: Weights, b: Weights, t: number): Weights => ({

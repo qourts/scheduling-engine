@@ -110,14 +110,15 @@ export function describeInstruction(i: SchedulingInstruction, config: Tournament
 }
 
 function describeSelector(s: MatchSelector, divisionName: (id: Id) => string): string {
-  const parts: string[] = [];
-  if (s.matchIds) parts.push(`matches ${s.matchIds.join(", ")}`);
-  if (s.divisionIds) parts.push(s.divisionIds.map(divisionName).join(" and "));
-  if (s.categoryIds) parts.push(`categories ${s.categoryIds.join(", ")}`);
-  if (s.stageIds) parts.push(`stages ${s.stageIds.join(", ")}`);
-  if (s.phases) parts.push(`${s.phases.join(" and ")} matches`);
-  if (s.roles) parts.push(`${s.roles.join(" and ").replace(/_/g, " ")} matches`);
-  return parts.length === 0 ? "all matches" : `matches of ${parts.join(", ")}`;
+  const adjective = s.roles ? s.roles.join(" or ").replace(/_/g, " ") : s.phases ? s.phases.join(" or ") : "";
+  const noun = adjective === "" ? "matches" : `${adjective} matches`;
+  const scope: string[] = [];
+  if (s.matchIds) scope.push(`${s.matchIds.join(", ")}`);
+  if (s.divisionIds) scope.push(s.divisionIds.map(divisionName).join(" and "));
+  if (s.categoryIds) scope.push(`categories ${s.categoryIds.join(", ")}`);
+  if (s.stageIds) scope.push(`stages ${s.stageIds.join(", ")}`);
+  if (scope.length > 0) return `${noun} of ${scope.join(", ")}`;
+  return adjective === "" ? "all matches" : noun;
 }
 
 export interface InstructionAwareReport extends ValidationReport {

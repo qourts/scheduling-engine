@@ -19,12 +19,14 @@ src/
   schedule/      Schedule and Assignment types, absolute timeline
   validation/    validateSchedule: the independent hard-constraint validator
   feasibility/   analyzeFeasibility: necessary conditions and remedies
+  instructions/  Structured scheduling instructions: types, validation, compilation, independent checker, adapter boundary
+  optimizer/     optimizeSchedules: construction, local search, metrics, strategies, distinctness and comparison
   util/          Time intervals, hashing, result type
 ```
 
-Dependency direction: `config → competition → inventory → {progression, validation, feasibility}`. `validation` and `feasibility` never import each other or any scheduler.
+Dependency direction: `config → competition → inventory → {progression, validation, feasibility}`, with `instructions → optimizer` on top. `validation` and `feasibility` never import each other or any scheduler. `optimizer` imports `validation` only to verify its own output and shares no scheduling logic with it.
 
-Planned additions (not implemented): `scheduling/` (strategy interface and the three strategies), `metrics/` (soft-constraint measurement and comparison), adapters for Qourts Match Control Core and Supabase in separate packages.
+Planned additions (not implemented): adapters for Qourts Match Control Core and Supabase in separate packages, a natural-language `InstructionAdapter` implementation, and the visual scheduling interface.
 
 ## Domain model
 
@@ -56,6 +58,8 @@ State is derived from the inventory plus the accepted events. There is one deriv
 - Event IDs are unique; timestamps and actors are supplied by the caller (the engine never reads the clock).
 
 ## Optimization approach (milestone 2, originally labelled milestone 3)
+
+Implemented as designed; see [Optimizer](optimizer.md) and [ADR 0005](adr/0005-heuristic-optimizer-structured-instructions.md) for the details and where the implementation refined the plan (time-driven construction order with fallbacks, relocate and swap moves, verified distinctness).
 
 1. Constructive, dependency-aware list scheduling prioritised by remaining critical path.
 2. Seeded local search (move, swap, re-insert) that only accepts moves keeping all hard rules satisfied.

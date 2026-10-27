@@ -19,9 +19,13 @@ A schedule violating any of these is invalid. Rules involving undecided playoff 
 
 Each violation carries `certainty`: `definite`, or `possible` (occurs for at least one outcome of undecided matches).
 
-## Configurable preferences (milestone 2, originally labelled milestone 3)
+## Mandatory instructions and preferences (milestone 2, originally labelled milestone 3)
 
-Measured and optimised, never enforced by the validator:
+Organizers add rules as [structured instructions](instructions.md), each explicitly mandatory or a weighted preference. Mandatory instructions are hard: the optimizer never violates them and `checkInstructions` (used by `validateScheduleWithInstructions`) rejects schedules that do. Instruction violations are reported separately from `validateSchedule` violations, with the instruction ID.
+
+## Soft objectives
+
+Measured and optimised by the optimizer, never enforced by the validator:
 
 - finish time per division and overall
 - rest above the minimum; back-to-back avoidance
@@ -31,4 +35,4 @@ Measured and optimised, never enforced by the validator:
 - preferred times (e.g. finals in a feature slot)
 - disruption minimisation during rescheduling
 
-Organizers can turn a preference into a hard rule where the configuration supports it today: division play windows, eligible courts, minimum rest, daily cap and unavailability windows. Further promotable rules (for example "never back-to-back") will be added with the optimizer.
+Organizers can turn a preference into a hard rule where the configuration or an instruction supports it: division play windows, eligible courts, minimum rest, daily cap and unavailability windows. Further promotable rules (for example "never back-to-back") will be added with the optimizer.
