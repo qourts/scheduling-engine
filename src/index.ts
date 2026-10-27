@@ -33,3 +33,37 @@ export {
 
 export { parseClock, formatClock, type Interval } from "./util/time.js";
 export type { Result } from "./util/result.js";
+
+export * from "./instructions/types.js";
+export { validateInstructions } from "./instructions/validate.js";
+export { compileInstructions, timeWindowStartRanges, type CompiledConstraints, type MatchLimits, type LocalPreference } from "./instructions/compile.js";
+export { checkInstructions, type InstructionViolation, type InstructionViolationCode } from "./instructions/check.js";
+export { SelectorIndex, matchRoles } from "./instructions/selector.js";
+export {
+  acceptProposal,
+  buildVocabulary,
+  describeInstruction,
+  validateScheduleWithInstructions,
+  type AcceptedProposal,
+  type InstructionAdapter,
+  type InstructionAwareReport,
+  type InstructionProposal,
+  type InstructionVocabulary,
+} from "./instructions/adapter.js";
+
+export { optimizeSchedules } from "./optimizer/optimize.js";
+export type {
+  Comparison,
+  OptimizeBudget,
+  OptimizeDiagnostics,
+  OptimizeOptions,
+  OptimizeResult,
+  OptimizeStatus,
+  OptionRelation,
+  Recommendation,
+  ScheduleOption,
+  UnplacedMatch,
+} from "./optimizer/types.js";
+export { STRATEGIES, STRATEGY_ORDER, type Strategy, type StrategyId } from "./optimizer/strategies.js";
+export { computeMetrics, type ScheduleMetrics, type Weights } from "./optimizer/metrics.js";
+export { assignmentDistance, dominance, materialDifferences, DEFAULT_THRESHOLDS, type DistinctnessThresholds, type Headline, type Dominance } from "./optimizer/compare.js";
