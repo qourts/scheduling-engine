@@ -11,7 +11,9 @@ export type Slot =
   | { type: "team"; teamId: Id }
   | { type: "winner"; matchId: MatchId }
   | { type: "loser"; matchId: MatchId }
-  | { type: "group_rank"; divisionId: Id; stageId: Id; groupId: Id; rank: number };
+  | { type: "group_rank"; divisionId: Id; stageId: Id; groupId: Id; rank: number }
+  /** The `index`-th best team (1-based) among those that finish in position `rank` in their group. */
+  | { type: "wildcard"; divisionId: Id; stageId: Id; rank: number; index: number };
 
 export type DependencyKind = "winner" | "loser" | "group_complete";
 

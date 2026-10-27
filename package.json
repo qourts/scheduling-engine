@@ -22,7 +22,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "npm run typecheck && npm test"
+    "check": "npm run typecheck && npm test",
+    "bench": "npm run build && node bench/run.mjs",
+    "acceptance": "npm run build && node bench/acceptance.mjs --write"
   },
   "devDependencies": {
     "@types/node": "^22.19.1",

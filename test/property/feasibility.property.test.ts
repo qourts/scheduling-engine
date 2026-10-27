@@ -46,7 +46,8 @@ describe("feasibility soundness (property)", () => {
         const failed = analyzeFeasibility(inventory).checks.filter((c) => !c.passed);
         expect(failed).toEqual([]);
       }),
-      { numRuns: 60 },
+      // Fixed seed: the non-vacuity guard below counts sampled cases, so unseeded runs could land on the threshold.
+      { numRuns: 60, seed: 20261027 },
     );
     expect(witnessed).toBeGreaterThan(10);
   }, 180_000);

@@ -102,6 +102,18 @@ export interface Division {
   stages: StageConfig[];
   /** Court time allocated per match, in minutes (playing time plus warm-up). */
   matchDurationMinutes: number;
+  /**
+   * Court time allocated to the final and the third-place match, when it differs
+   * from `matchDurationMinutes` (for example best of 3 for medals). Optional.
+   */
+  medalMatchDurationMinutes?: number;
+  /**
+   * Optional breakdown of `matchDurationMinutes` for documentation and validation: the active playing time
+   * and the transition allowance (warm-up, changeover) that is ALREADY INSIDE the slot. When both are given
+   * they must add up to `matchDurationMinutes`; the engine never adds the transition a second time.
+   */
+  playMinutes?: number;
+  transitionMinutes?: number;
   scoring: ScoringRules;
   standings: StandingsRules;
   /** Overrides `rules.minRestMinutes` for players while playing in this division. */
@@ -140,7 +152,20 @@ export type KnockoutSource =
   /** Entrants are the division's teams, ordered by seed. */
   | { type: "teams" }
   /** Entrants are the top `perGroup` finishers of every group of the previous stage. */
-  | { type: "qualifiers"; fromStageId: Id; perGroup: number };
+  | { type: "qualifiers"; fromStageId: Id; perGroup: number; wildcards?: WildcardRule };
+
+/**
+ * Extra qualifiers drawn across all groups of the previous stage: the best `count` teams that finished
+ * in position `rank` (for example rank 2 = "best second-placed teams"). Wildcards take the lowest knockout
+ * seeds. They are ranked by wins, game difference, point difference, points for, then a deterministic draw.
+ * Who qualifies is unknown until every group has finished, so scheduling treats every team of the stage as a
+ * possible wildcard.
+ */
+export interface WildcardRule {
+  count: number;
+  /** Group finishing position the wildcards come from; must be greater than `perGroup`. */
+  rank: number;
+}
 
 export interface KnockoutStageConfig {
   id: Id;
@@ -151,7 +176,10 @@ export interface KnockoutStageConfig {
 }
 
 export interface GlobalRules {
-  /** Minimum gap between two matches on the same court. */
+  /**
+   * Additional turnover buffer between two matches on the same court, on top of each match's scheduled slot. Use 0 when the
+   * slot already contains the transition (see `Division.transitionMinutes`): the engine never adds a transition automatically.
+   */
   courtTurnoverMinutes: number;
   /** Minimum rest for a player between the end of one match and the start of the next. */
   minRestMinutes: number;
