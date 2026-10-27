@@ -112,7 +112,7 @@ function relocate(ctx: PlanContext, state: PlacementState, movable: readonly num
     [courts[k], courts[j]] = [courts[j]!, courts[k]!];
   }
   const candidates: { court: number; start: number }[] = [];
-  const lower = ctx.alignUp(state.lowerBound(match));
+  const lower = state.lowerBound(match);
   const step = Math.max(ctx.granularity, ctx.alignUp(ctx.duration[match]! / 2));
   for (const court of courts.slice(0, CANDIDATE_COURTS)) {
     let from = lower;

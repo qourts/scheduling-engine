@@ -311,8 +311,64 @@ describe("optimizer: failure and degradation", () => {
     expect(result.options.some((o) => o.budgetExhausted)).toBe(true);
   });
 
-  it("rejects an invalid granularity", () => {
-    expect(() => run(build(), [], { granularityMinutes: 7 })).toThrow(/granularity/);
+  it("returns structured errors for invalid options instead of throwing or silently misbehaving", () => {
+    const inventory = build();
+    const bad: [OptimizeOptions, RegExp][] = [
+      [{ granularityMinutes: 7 }, /granularity/],
+      [{ strategies: [] }, /non-empty/],
+      [{ strategies: ["nope" as never] }, /unknown strategy/],
+      [{ budget: { totalMs: Number.NaN } }, /totalMs/],
+      [{ budget: { iterationsPerStrategy: -1 } }, /iterationsPerStrategy/],
+      [{ diversityAttempts: Number.POSITIVE_INFINITY }, /diversityAttempts/],
+      [{ seed: Number.NaN }, /seed/],
+      [{ distinctness: { minAssignmentDistance: undefined as never } }, /minAssignmentDistance/],
+      [{ backToBackMinutes: Number.NaN }, /backToBackMinutes/],
+    ];
+    for (const [options, pattern] of bad) {
+      const result = optimizeSchedules(inventory, options);
+      expect(result.status).toBe("invalid_options");
+      expect(result.options).toEqual([]);
+      expect(result.optionIssues!.join(" ")).toMatch(pattern);
+    }
+  });
+
+  it("deduplicates repeated strategies", () => {
+    const result = run(build(), [], { strategies: ["balanced_operations", "balanced_operations"] });
+    expect(result.options.map((o) => o.strategy)).toEqual(["balanced_operations"]);
+  });
+
+  it("a lock on a court the instructions forbid is reported as a locked-placement problem, with a failure report", () => {
+    const inventory = build();
+    const match = inventory.matches[0]!;
+    const result = run(inventory, [
+      mandatory({ id: "lock", kind: "locked_placement", matchId: match.id, courtId: "C2", day: DAY1, start: 8 * 60 }),
+      mandatory({ id: "only-c1", kind: "court_allowlist", selector: { matchIds: [match.id] }, courtIds: ["C1"] }),
+    ]);
+    expect(result.status).toBe("no_schedule");
+    expect(result.failure!.lockedProblems).toContain(match.id);
+    expect(result.failure!.unplaced.some((u) => u.reason.includes("locked placement"))).toBe(true);
+  });
+
+  it("an off-grid window start is still usable (granularity does not cause false infeasibility)", () => {
+    const inventory = buildInventory(
+      tournament({ courts: courts(1, [{ day: DAY1, start: 9 * 60, end: 9 * 60 + 30 }]), divisions: [{ id: "ONE", categoryId: "MD", teamCount: 2, stages: stages.roundRobin() }] }),
+    );
+    const result = run(inventory, [], { granularityMinutes: 8 });
+    expect(result.status).toBe("ok");
+    expectAllValid(inventory, result);
+  });
+
+  it("does not recommend Balanced when it is absent, and does not claim a single option when there are two", () => {
+    const result = run(build(), [], { strategies: ["fastest_finish", "player_first"] });
+    expect(result.options).toHaveLength(2);
+    expect(result.recommended?.reason ?? "").not.toContain("only option");
+    expect(result.recommended?.strategy).not.toBe("balanced_operations");
+  });
+
+  it("reports how far a run exceeded its time budget", () => {
+    let now = 0;
+    const result = optimizeSchedules(build(), { seed: 2, budget: { totalMs: 10 }, clock: () => (now += 100) });
+    expect(result.diagnostics.budgetOverrunMs).toBeGreaterThan(0);
   });
 });
 

@@ -50,7 +50,12 @@ export interface ScheduleOption {
   cost: number;
   /** The option passed `validateSchedule` and the mandatory-instruction checker. Options that did not are never returned. */
   validated: true;
-  search: { iterations: number; stopReason: StopReason; diversificationAttempts: number };
+  /**
+   * `fallback_baseline` means local search produced a schedule that failed independent
+   * verification, so the verified construction baseline is returned instead (and the
+   * discarded candidate is listed in `rejected`). `iterations` is then 0.
+   */
+  search: { iterations: number; stopReason: StopReason | "fallback_baseline"; diversificationAttempts: number };
   /** True when the time budget ended the search; the schedule is valid but may be improvable. */
   budgetExhausted: boolean;
 }
@@ -97,9 +102,11 @@ export interface OptimizeDiagnostics {
   /** Minutes between the best finish found and the optimistic lower bound. Not a measure of distance to the optimum. */
   finishGapToLowerBound: number | null;
   warnings: InstructionIssue[];
+  /** Milliseconds by which the run exceeded `budget.totalMs` (construction and verification are not interruptible). 0 when within budget. */
+  budgetOverrunMs: number;
 }
 
-export type OptimizeStatus = "ok" | "no_schedule" | "invalid_instructions";
+export type OptimizeStatus = "ok" | "no_schedule" | "invalid_instructions" | "invalid_options";
 
 export interface OptimizeResult {
   status: OptimizeStatus;
@@ -110,6 +117,8 @@ export interface OptimizeResult {
   diagnostics: OptimizeDiagnostics;
   /** Present when `status` is "no_schedule": what could not be placed, and the feasibility analysis. */
   failure?: { unplaced: UnplacedMatch[]; feasibility: FeasibilityReport; lockedProblems: Id[] };
+  /** Present when `status` is "invalid_options": every problem found in the options. */
+  optionIssues?: string[];
   /** Present when `status` is "invalid_instructions". */
   instructionIssues?: InstructionIssue[];
   /** Set when an internal consistency check rejected a candidate; should never happen. */

@@ -13,6 +13,9 @@ import {
   type TimeBound,
 } from "./types.js";
 
+/** Upper bound on a preference weight; larger values would overflow the objective to Infinity. */
+const MAX_WEIGHT = 1_000_000;
+const PHASES = new Set(["group", "knockout"]);
 const MATCH_ROLES = new Set(["final", "third_place", "medal", "semifinal", "quarterfinal"]);
 
 /**
@@ -59,6 +62,7 @@ export function validateInstructions(inventory: Inventory, instructions: readonl
     for (const s of selector.stageIds ?? []) if (!stageIds.has(s)) error("UNKNOWN_STAGE", id, `Unknown stage ${s}`);
     for (const m of selector.matchIds ?? []) if (!inventory.matchById.has(m)) error("UNKNOWN_MATCH", id, `Unknown match ${m}`);
     for (const r of selector.roles ?? []) if (!MATCH_ROLES.has(r)) error("INVALID_VALUE", id, `Unknown match role ${r}`);
+    for (const p of selector.phases ?? []) if (!PHASES.has(p)) error("INVALID_VALUE", id, `Unknown phase ${p} (use "group" or "knockout")`);
     for (const [field, list] of Object.entries(selector)) {
       if (Array.isArray(list) && list.length === 0) error("EMPTY_LIST", id, `selector.${field} must not be empty (omit it to select all)`);
     }
@@ -68,6 +72,10 @@ export function validateInstructions(inventory: Inventory, instructions: readonl
   };
 
   for (const instruction of instructions) {
+    if (instruction === null || typeof instruction !== "object") {
+      error("INVALID_VALUE", null, "Every instruction must be an object");
+      continue;
+    }
     const id = instruction.id;
     if (typeof id !== "string" || id === "") {
       error("INVALID_VALUE", null, "Every instruction needs a non-empty id");
@@ -77,11 +85,14 @@ export function validateInstructions(inventory: Inventory, instructions: readonl
     seen.add(id);
 
     if (instruction.strength === "preference") {
-      if (!Number.isFinite(instruction.weight) || instruction.weight <= 0) error("INVALID_WEIGHT", id, "A preference needs a finite weight greater than 0");
+      if (!Number.isFinite(instruction.weight) || instruction.weight <= 0 || instruction.weight > MAX_WEIGHT) {
+        error("INVALID_WEIGHT", id, `A preference needs a finite weight greater than 0 and at most ${MAX_WEIGHT}`);
+      }
     } else if (instruction.strength !== "mandatory") {
       error("INVALID_VALUE", id, 'strength must be "mandatory" or "preference"');
     }
 
+    try {
     switch (instruction.kind) {
       case "time_window": {
         checkSelector(id, instruction.selector);
@@ -159,6 +170,10 @@ export function validateInstructions(inventory: Inventory, instructions: readonl
         const unknown = instruction as { id?: Id; kind?: string };
         error("INVALID_VALUE", unknown.id ?? null, `Unknown instruction kind ${unknown.kind}`);
       }
+    }
+    } catch {
+      // Untrusted input (for example an adapter proposal) can be structurally malformed: report it, never throw.
+      error("INVALID_VALUE", id, "The instruction is malformed (a required field is missing or has the wrong type)");
     }
   }
 

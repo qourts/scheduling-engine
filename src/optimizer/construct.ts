@@ -52,7 +52,9 @@ export function construct(ctx: PlanContext, options: ConstructOptions): Construc
   for (const [match, slot] of ctx.locked) state.place(match, slot.court, slot.start);
   for (const [match, slot] of ctx.locked) {
     state.unplace(match);
-    if (!state.isFeasible(match, slot.court, slot.start)) {
+    if (!ctx.allowedCourts[match]!.includes(slot.court)) {
+      unplaced.set(match, "locked placement is on a court that division or instruction rules do not allow for this match");
+    } else if (!state.isFeasible(match, slot.court, slot.start)) {
       unplaced.set(match, "locked placement breaks a hard rule given the other locked placements");
     }
     state.place(match, slot.court, slot.start);
@@ -84,7 +86,7 @@ export function construct(ctx: PlanContext, options: ConstructOptions): Construc
   const order = options.order ?? "time";
   const key = new Map<number, number>();
   const earliest = (match: number): number | null => {
-    const lower = ctx.alignUp(state.lowerBound(match));
+    const lower = state.lowerBound(match);
     let best: number | null = null;
     for (const court of ctx.allowedCourts[match]!) {
       const s = state.nextFeasible(match, court, lower);
@@ -153,7 +155,7 @@ interface Slot {
 
 /** Lowest-cost feasible slot for an unplaced match, or null when none exists. */
 export function bestSlot(ctx: PlanContext, state: PlacementState, match: number, options: ConstructOptions): Slot | null {
-  const lower = ctx.alignUp(state.lowerBound(match));
+  const lower = state.lowerBound(match);
   const maxDelay = options.maxDelayMinutes ?? 90;
   let best: Slot | null = null;
   for (const court of ctx.allowedCourts[match]!) {

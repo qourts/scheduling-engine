@@ -50,6 +50,8 @@ interface Candidate {
   search: SearchResult | null;
   attempts: number;
   budgetExhausted: boolean;
+  /** Local search output failed verification; this is the verified construction baseline instead. */
+  fallback?: boolean;
 }
 
 /**
@@ -69,6 +71,11 @@ export function optimizeSchedules(inventory: Inventory, options: OptimizeOptions
   const seed = options.seed ?? 1;
   const instructions = options.instructions ?? [];
 
+  const optionIssues = validateOptions(options);
+  if (optionIssues.length > 0) {
+    return emptyResult("invalid_options", seed, clock() - startedAt, inventory, { optionIssues });
+  }
+
   const compiled = compileInstructions(inventory, instructions);
   if (!compiled.ok) {
     return emptyResult("invalid_instructions", seed, clock() - startedAt, inventory, { instructionIssues: compiled.error });
@@ -76,7 +83,7 @@ export function optimizeSchedules(inventory: Inventory, options: OptimizeOptions
   const constraints = compiled.value;
   const ctx = new PlanContext(constraints, options);
   const random = createRandom(seed);
-  const strategies = (options.strategies ?? STRATEGY_ORDER).map((id) => STRATEGIES[id]);
+  const strategies = [...new Set(options.strategies ?? STRATEGY_ORDER)].map((id) => STRATEGIES[id]);
   const thresholds: DistinctnessThresholds = { ...DEFAULT_THRESHOLDS, ...options.distinctness };
 
   const iterations = options.budget?.iterationsPerStrategy ?? DEFAULT_ITERATIONS;
@@ -91,8 +98,8 @@ export function optimizeSchedules(inventory: Inventory, options: OptimizeOptions
     if (result.unplaced.size === 0) built.set(strategy.id, result);
     else if (bestPartial === null || result.unplaced.size < bestPartial.unplaced.size) bestPartial = result;
   }
-  if (built.size === 0) {
-    const partial = bestPartial!;
+  if (built.size === 0 && bestPartial !== null) {
+    const partial: ConstructResult = bestPartial;
     const unplaced: UnplacedMatch[] = [...partial.unplaced].map(([m, reason]) => ({ matchId: ctx.matches[m]!.id, reason }));
     const lockedProblems = [...partial.unplaced].filter(([m]) => ctx.locked.has(m)).map(([m]) => ctx.matches[m]!.id);
     return emptyResult("no_schedule", seed, clock() - startedAt, inventory, {
@@ -100,6 +107,8 @@ export function optimizeSchedules(inventory: Inventory, options: OptimizeOptions
       warnings: [...constraints.warnings],
     });
   }
+
+  if (built.size === 0) return emptyResult("no_schedule", seed, clock() - startedAt, inventory, { warnings: [...constraints.warnings] });
 
   // 2. Local search per strategy.
   const searchStrategies = strategies.filter((s) => built.has(s.id));
@@ -139,13 +148,14 @@ export function optimizeSchedules(inventory: Inventory, options: OptimizeOptions
       verified.push(candidate);
       continue;
     }
+    // The search result failed independent verification: never hide that. Record it,
+    // then fall back to the verified construction baseline if that one is valid.
+    rejected.push({ strategy: candidate.strategy.id, violations: check.violations, instructionViolations: check.instructionViolations });
     const fallback = built.get(candidate.strategy.id)!.state;
     const again = verify(inventory, constraints.inventory, constraints.locked, instructions, fallback);
     if (again.valid) {
       const metrics = computeMetrics(ctx, fallback);
-      verified.push({ ...candidate, state: fallback, metrics, cost: objectiveCost(metrics, candidate.strategy.weights), search: null });
-    } else {
-      rejected.push({ strategy: candidate.strategy.id, violations: check.violations, instructionViolations: check.instructionViolations });
+      verified.push({ ...candidate, state: fallback, metrics, cost: objectiveCost(metrics, candidate.strategy.weights), search: null, budgetExhausted: false, fallback: true });
     }
   }
 
@@ -163,12 +173,12 @@ export function optimizeSchedules(inventory: Inventory, options: OptimizeOptions
     const at = verified.findIndex((c) => c.strategy.id === target.strategy.id);
     verified[at] = { ...reworked, attempts: attempt };
   }
-  for (const c of verified) c.attempts = Math.max(c.attempts, 0);
 
   const ordered = [...verified].sort((a, b) => STRATEGY_ORDER.indexOf(a.strategy.id) - STRATEGY_ORDER.indexOf(b.strategy.id));
   const optionsOut = ordered.map((c): ScheduleOption => toOption(ctx, c));
-  const comparison = compare(ordered, optionsOut, thresholds, ctx, diversityAttempts, rejected.length);
+  const comparison = compare(ordered, optionsOut, thresholds, ctx, diversityAttempts, rejected.length, strategies.length);
 
+  const elapsedMs = clock() - startedAt;
   const finishBest = ordered.length === 0 ? null : Math.min(...ordered.map((c) => c.metrics.finishMinute));
   const lower = ctx.finishLowerBound();
   const result: OptimizeResult = {
@@ -178,17 +188,51 @@ export function optimizeSchedules(inventory: Inventory, options: OptimizeOptions
     comparison,
     diagnostics: {
       seed,
-      elapsedMs: clock() - startedAt,
+      elapsedMs,
       matchCount: ctx.size,
       courtCount: ctx.courts.length,
       granularityMinutes: ctx.granularity,
       finishLowerBoundMinute: lower,
       finishGapToLowerBound: finishBest === null ? null : finishBest - lower,
       warnings: [...constraints.warnings],
+      budgetOverrunMs: capMs === undefined ? 0 : Math.max(0, elapsedMs - capMs),
     },
   };
+  if (ordered.length === 0) {
+    // Every candidate failed independent verification (for example a lock that contradicts another rule).
+    result.failure = { unplaced: [], feasibility: analyzeFeasibility(constraints.inventory), lockedProblems: [] };
+  }
   if (rejected.length > 0) result.rejected = rejected;
   return result;
+}
+
+function validateOptions(o: OptimizeOptions): string[] {
+  const issues: string[] = [];
+  const finite = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
+  if (o.seed !== undefined && !Number.isInteger(o.seed)) issues.push("seed must be an integer");
+  if (o.strategies !== undefined) {
+    if (!Array.isArray(o.strategies) || o.strategies.length === 0) issues.push("strategies must be a non-empty list");
+    else for (const id of o.strategies) if (typeof id !== "string" || !Object.hasOwn(STRATEGIES, id)) issues.push(`unknown strategy ${String(id)}`);
+  }
+  const b = o.budget;
+  if (b?.totalMs !== undefined && !(finite(b.totalMs) && b.totalMs >= 0)) issues.push("budget.totalMs must be a finite number of milliseconds >= 0");
+  if (b?.iterationsPerStrategy !== undefined && !(Number.isInteger(b.iterationsPerStrategy) && b.iterationsPerStrategy >= 0)) {
+    issues.push("budget.iterationsPerStrategy must be an integer >= 0");
+  }
+  if (o.diversityAttempts !== undefined && !(Number.isInteger(o.diversityAttempts) && o.diversityAttempts >= 0 && o.diversityAttempts <= 10)) {
+    issues.push("diversityAttempts must be an integer from 0 to 10");
+  }
+  for (const [key, value] of Object.entries(o.distinctness ?? {})) {
+    if (!finite(value) || value < 0) issues.push(`distinctness.${key} must be a finite number >= 0`);
+  }
+  if (o.granularityMinutes !== undefined && !(Number.isInteger(o.granularityMinutes) && o.granularityMinutes >= 1 && 1440 % o.granularityMinutes === 0)) {
+    issues.push("granularityMinutes must be a positive divisor of 1440");
+  }
+  for (const key of ["backToBackMinutes", "comfortRestMinutes"] as const) {
+    const value = o[key];
+    if (value !== undefined && !(finite(value) && value >= 0)) issues.push(`${key} must be a finite number >= 0`);
+  }
+  return issues;
 }
 
 function emptyResult(
@@ -213,6 +257,7 @@ function emptyResult(
       finishLowerBoundMinute: 0,
       finishGapToLowerBound: null,
       warnings: warnings ?? [],
+      budgetOverrunMs: 0,
     },
     ...rest,
   };
@@ -379,7 +424,7 @@ function toOption(ctx: PlanContext, c: Candidate): ScheduleOption {
     validated: true,
     search: {
       iterations: c.search?.iterations ?? 0,
-      stopReason: c.search?.stopReason ?? "converged",
+      stopReason: c.fallback ? "fallback_baseline" : (c.search?.stopReason ?? "converged"),
       diversificationAttempts: c.attempts,
     },
     budgetExhausted: c.budgetExhausted,
@@ -393,6 +438,7 @@ function compare(
   ctx: PlanContext,
   attempts: number,
   rejectedCount: number,
+  requested: number,
 ): Comparison {
   const relations: OptionRelation[] = [];
   const equivalent: Comparison["equivalent"] = [];
@@ -405,18 +451,20 @@ function compare(
   }
 
   const explanation: string[] = [];
-  if (ordered.length < STRATEGY_ORDER.length) {
+  if (ordered.length < requested) {
     explanation.push(
-      `Only ${ordered.length} of ${STRATEGY_ORDER.length} options could be produced${rejectedCount > 0 ? " (some candidates failed independent validation and were discarded)" : ""}.`,
+      `Only ${ordered.length} of ${requested} requested options could be produced${rejectedCount > 0 ? " (some candidates failed independent validation and were discarded)" : ""}.`,
     );
   }
   if (equivalent.length > 0) {
     for (const e of equivalent) {
       const name = (id: StrategyId) => STRATEGIES[id].name;
       const rel = relations.find((r) => (r.a === e.equivalentTo && r.b === e.strategy) || (r.b === e.equivalentTo && r.a === e.strategy))!;
-      explanation.push(
-        `${name(e.strategy)} is materially equivalent to ${name(e.equivalentTo)} (${(rel.assignmentDistance * 100).toFixed(0)}% of matches placed differently; no headline measure differs beyond the thresholds).`,
-      );
+      const cause =
+        rel.assignmentDistance < thresholds.minAssignmentDistance
+          ? `only ${(rel.assignmentDistance * 100).toFixed(0)}% of matches are placed differently, below the ${(thresholds.minAssignmentDistance * 100).toFixed(0)}% minimum`
+          : `${(rel.assignmentDistance * 100).toFixed(0)}% of matches are placed differently but no headline measure differs beyond the thresholds`;
+      explanation.push(`${name(e.strategy)} is materially equivalent to ${name(e.equivalentTo)} (${cause}).`);
     }
     const lowerGap = Math.min(...options.map((o) => o.metrics.finishMinute)) - ctx.finishLowerBound();
     if (lowerGap <= 30) {
@@ -450,7 +498,16 @@ function recommend(ordered: readonly Candidate[], comparison: Comparison): Recom
     const better = dominatedBy.a === "balanced_operations" ? dominatedBy.b : dominatedBy.a;
     return { strategy: better, reason: `${name(better)} is at least as good as Balanced Operations on every measured objective and strictly better on at least one, so it is recommended instead.` };
   }
-  const first = ordered[0]!;
-  return { strategy: first.strategy.id, reason: `${first.strategy.name} is the only option that could be produced.` };
+  if (ordered.length === 1) {
+    const only = ordered[0]!;
+    return { strategy: only.strategy.id, reason: `${only.strategy.name} is the only option that could be produced.` };
+  }
+  const undominated = ordered.filter((c) => !comparison.relations.some((r) =>
+    (r.a === c.strategy.id && r.dominance === "b_dominates") || (r.b === c.strategy.id && r.dominance === "a_dominates")));
+  if (undominated.length === 1) {
+    const best = undominated[0]!;
+    return { strategy: best.strategy.id, reason: `Balanced Operations is not among the options; ${best.strategy.name} is at least as good as every other option on every measured objective.` };
+  }
+  return null;
 }
 

@@ -99,6 +99,42 @@ describe("validateInstructions", () => {
   });
 });
 
+describe("validateInstructions hardening", () => {
+  const inv = inventory();
+  const issues = (list: unknown[]) => validateInstructions(inv, list as SchedulingInstruction[]);
+
+  it("never throws on structurally malformed instructions and reports them", () => {
+    const malformed = [
+      null,
+      "text",
+      { id: "a", kind: "time_window", strength: "mandatory" },
+      { id: "b", kind: "court_blackout", strength: "mandatory", courtIds: ["C1"] },
+      { id: "c", kind: "court_allowlist", strength: "mandatory", selector: {} },
+    ];
+    expect(() => issues(malformed)).not.toThrow();
+    const result = issues(malformed);
+    expect(result.ok).toBe(false);
+    expect(result.issues.filter((i) => i.severity === "error").length).toBeGreaterThanOrEqual(malformed.length);
+  });
+
+  it("rejects unknown selector phases instead of silently selecting nothing", () => {
+    const result = issues([{ id: "p", kind: "time_window", strength: "mandatory", selector: { phases: ["groups"] }, latestStart: { minute: 600 } }]);
+    expect(result.ok).toBe(false);
+    expect(result.issues.map((i) => i.code)).toContain("INVALID_VALUE");
+  });
+
+  it("caps preference weights so the objective cannot overflow", () => {
+    const base = { id: "w", kind: "court_allowlist", selector: {}, courtIds: ["C1"], strength: "preference" };
+    expect(issues([{ ...base, weight: 1e308 }]).issues.map((i) => i.code)).toContain("INVALID_WEIGHT");
+    expect(issues([{ ...base, weight: 1_000_000 }]).ok).toBe(true);
+  });
+
+  it("acceptProposal returns issues for a malformed proposal instead of throwing", () => {
+    const result = acceptProposal(inv, { instructions: [{ id: "x", kind: "time_window", strength: "mandatory" } as unknown as SchedulingInstruction], unresolved: [] });
+    expect(result.ok).toBe(false);
+  });
+});
+
 describe("compileInstructions", () => {
   it("applies blackouts and minimum rest to an effective copy and leaves the original untouched", () => {
     const inv = inventory();

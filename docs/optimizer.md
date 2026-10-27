@@ -20,11 +20,20 @@ const result = optimizeSchedules(buildInventory(config), {
 1. **Compile instructions** (`compileInstructions`). Invalid instructions stop here with `invalid_instructions`.
 2. **Construct** with dependency-aware list scheduling. The ready match with the largest "earliest start plus remaining critical path" goes next and is placed in the feasible slot with the lowest weighted cost. If a strategy's own weights fill the day too early, progressively simpler fallbacks follow, ending with Fastest Finish weights; the local search then reshapes that schedule under the strategy's weights.
 3. **Search**: seeded local search (relocate one match, or swap two) under the strategy's weights. Every move is first tested against the hard rules, so the search never leaves the feasible region. A move is kept if it does not worsen the weighted cost. The result is a local optimum relative to these moves.
-4. **Verify** every candidate with the independent `validateSchedule` and `checkInstructions`. A candidate that fails is discarded, never returned.
+4. **Verify** every candidate with the independent `validateSchedule` and `checkInstructions`. A search result that fails verification is never returned: it is recorded in `result.rejected` and replaced by the verified construction baseline (`option.search.stopReason` is then `fallback_baseline`). If the baseline fails too, that strategy produces no option. This should never happen; it exists so that a search bug can never leak an invalid schedule or hide itself.
 5. **Distinctness**: detect duplicate or materially equivalent options and try to produce real alternatives (below).
 6. **Compare and recommend.**
 
-If nothing can be placed, the result is `no_schedule` with the unplaced matches, a reason for each, and the feasibility analysis.
+## Result statuses
+
+| `status` | Meaning |
+|---|---|
+| `ok` | At least one verified option. See `comparison` for how many are distinct |
+| `no_schedule` | Nothing could be placed (or every candidate failed verification). `failure` lists unplaced matches with reasons, locked placements that conflict with other rules, and the feasibility analysis |
+| `invalid_instructions` | An instruction failed validation. `instructionIssues` lists every problem; nothing was scheduled |
+| `invalid_options` | The optimizer options are invalid (for example an empty `strategies` list, a NaN budget, a granularity that does not divide 1440). `optionIssues` lists every problem |
+
+Invalid inputs are reported, never silently corrected.
 
 ## Strategies
 
@@ -66,7 +75,7 @@ Different weights do not guarantee different schedules, so the engine checks.
 
 ## Budgets, determinism and degradation
 
-- `budget.totalMs` caps wall-clock time (default 8 s up to 300 matches, 24 s above). Reaching it is not an error: the best valid schedule found so far is returned and `option.budgetExhausted` is true.
+- `budget.totalMs` caps wall-clock time (default 8 s up to 300 matches, 24 s above). Reaching it is not an error: the best valid schedule found so far is returned and `option.budgetExhausted` is true. The cap applies to the search and diversification phases; construction and verification cannot be interrupted, so a very small cap can be exceeded. `diagnostics.budgetOverrunMs` reports by how much.
 - `budget.iterationsPerStrategy` caps local-search moves (default 30,000). With this set and `totalMs` unset the run is bit-for-bit reproducible for a seed. With a time cap, reproducibility holds only when the iteration cap is reached first.
 - `option.search.stopReason` is `iterations`, `time` or `converged` (no improvement for a long stretch).
 - The core is a pure function of its inputs: nothing is mutated, and the clock is only used to enforce the safety cap (inject `clock` in tests).
