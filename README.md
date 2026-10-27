@@ -93,4 +93,5 @@ Requires Node 20+. Dev dependencies: TypeScript, Vitest, fast-check.
 - [Optimizer: strategies, metrics, distinctness, benchmark](docs/optimizer.md)
 - [Feasibility analysis](docs/feasibility.md)
 - [Assumptions and known limitations](docs/limitations.md)
+- [Tracked future requirements](docs/future-requirements.md)
 - [Architecture decision records](docs/adr/)

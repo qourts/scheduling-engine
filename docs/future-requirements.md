@@ -1,0 +1,13 @@
+# Tracked future requirements
+
+Limitations accepted with Milestone 2 that are to be addressed later. Each has a stable ID. Detail on the current behaviour is in [limitations.md](limitations.md) and the [Milestone 2 acceptance report](acceptance/milestone-2-acceptance.md).
+
+| ID | Requirement | Current behaviour | Target |
+| --- | --- | --- | --- |
+| R1 | Tournament-specific tiebreaker matches and unresolved qualification | The plan contains no tiebreaker matches. Ties are settled by the configured criteria, ending in a deterministic `draw`. Echelon's race-to-6 is not modelled (see [ADR 0006](adr/0006-echelon-rules-and-experimental-recovery.md)). | Model tiebreaker matches (including wildcard ties) as schedulable, provisional matches. Represent a qualification that is unresolved until they are played. Never substitute `draw` for a required procedure. |
+| R2 | Uneven-bracket wildcard normalization | One wildcard seat per knockout stage. The wildcard takes the lowest seed (seed #4 for Echelon). No re-draw if it meets its own bracket's winner. Divisions with more than one wildcard seat skip the exhaustive check. | Normalise wildcard ranking across brackets of different sizes. Support multiple seats. Make the same-bracket re-draw rule configurable, never automatic by default. |
+| R3 | Medal-match overruns and contingency scheduling | Medal matches have no hard time cap. The 30-minute slot is an estimate, and overruns are warned about but not planned for. The Echelon zero-slack schedule has no contingency. | Contingency buffers and overrun handling for medal matches. Scheduling that reserves slack where overruns would cascade. |
+| R4 | Heuristic search failures on very tight configurations | Construction is greedy with bounded retries and no backtracking. Configurations near capacity can end as `not_found`, which is explicitly not a proof of infeasibility. | Stronger search (for example backtracking or exact methods on tight cases) and clearer reporting when the outcome is unknown. |
+| R5 | Live rescheduling and manual schedule edits | Schedules are generated whole. Locks exist for the optimizer but are not events in the progression log. There is no repair workflow after play begins. | Manual edits and live rescheduling with validation, minimal-change repair, and impact analysis. Milestone 3 delivers the interactive editing and impact-analysis part for pre-event schedules. Live, in-event rescheduling stays here. |
+
+Related classification: the five-minute Echelon recovery value is **experimental** and the zero-buffer schedule is **not approved for live operations** (ADR 0006).

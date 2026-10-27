@@ -24,7 +24,8 @@
 ## Known limitations (milestone 2)
 
 - **Wildcards:** one wildcard seat per knockout stage is supported (`count: 1`, taken from a rank below the automatic qualifiers). The wildcard takes the lowest seed and is not re-drawn if it meets its own pool's winner. Exhaustive outcome checking skips divisions with more than one wildcard seat or more than 200,000 outcomes and says so.
-- **Recovery for the Echelon regression scenario is an assumption.** The brief does not state it. With 10 minutes the approved category windows are provably infeasible; the largest feasible value is 5. See the acceptance report for the changes that work.
+- **Recovery for the Echelon regression scenario is an assumption.** The brief does not state it. With 10 minutes the approved category windows are provably infeasible; the largest feasible value is 5. See the acceptance report for the changes that work. The 5-minute value is **experimental** and the zero-buffer schedule is **not approved for live operations** ([ADR 0006](adr/0006-echelon-rules-and-experimental-recovery.md)).
+- **Echelon wildcard is seed #4 with no automatic same-bracket redraw, and the deterministic `draw` is not a substitute for Echelon's race-to-6 tiebreaker** ([ADR 0006](adr/0006-echelon-rules-and-experimental-recovery.md)). Tracked in [future requirements](future-requirements.md) R1 and R2.
 - **Equivalent options at the feasibility limit.** When a schedule exists only with zero slack, the three strategies produce materially equivalent outcomes. The engine reports that and does not manufacture differences.
 
 - **Heuristic.** The optimizer reaches a local optimum of its moves under a budget. It never proves optimality, and an option that looks improvable may be. Reported lower bounds are optimistic and ignore court contention, rest and availability gaps.
