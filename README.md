@@ -87,6 +87,8 @@ Requires Node 20+. Dev dependencies: TypeScript, Vitest, fast-check.
 - [Architecture](docs/architecture.md)
 - [Competition formats](docs/formats.md)
 - [Constraints: hard rules and preferences](docs/constraints.md)
+- [Time-allocation model](docs/time-allocation.md)
+- [What is guaranteed, and how](docs/guarantees.md)
 - [Structured scheduling instructions](docs/instructions.md)
 - [Optimizer: strategies, metrics, distinctness, benchmark](docs/optimizer.md)
 - [Feasibility analysis](docs/feasibility.md)

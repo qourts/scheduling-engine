@@ -175,6 +175,20 @@ describe("Echelon one-day: a feasible configuration (recovery 5 minutes)", () =>
   });
 });
 
+describe("exhaustive outcome check coverage", () => {
+  it("also covers a division whose knockout is seeded straight from teams", () => {
+    const config = buildEchelonDayConfig({ minRest: 5 });
+    config.divisions[0]!.stages = [{ id: "ko", kind: "single_elimination", source: { type: "teams" }, thirdPlaceMatch: true }];
+    const inventory = buildInventory(config);
+    const r = optimizeSchedules(inventory, { seed: 1, budget: { iterationsPerStrategy: 200 }, diversityAttempts: 0 });
+    expect(r.status).toBe("ok");
+    const report = verifyAllQualifierOutcomes(inventory, r.options[0]!.schedule);
+    expect(report.skipped).toEqual([]);
+    // 12 teams in a bracket of 16: ten matches feed another match, so 2^10 result combinations.
+    expect(report.enumerated.find((e) => e.divisionId === config.divisions[0]!.id)!.outcomes).toBe(1024);
+  });
+});
+
 describe("Echelon one-day: honest results around the boundary", () => {
   it("recovery of 6 to 9 minutes is proven infeasible", () => {
     for (const rest of [6, 9]) {

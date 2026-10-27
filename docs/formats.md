@@ -36,6 +36,14 @@ The top `perGroup` finishers of every group qualify. Group winners take knockout
 
 Because positions are fixed by group letter, the full bracket is known before play starts.
 
+### Wildcards
+
+`source.wildcards: { count, rank }` adds the best `count` teams that finished in position `rank` across all groups (for example `{ count: 1, rank: 2 }` is the best second-placed team). With three groups, `perGroup: 1` and one wildcard the knockout has four qualifiers: the three winners plus the wildcard, which takes the lowest seed. Wildcards are ranked by wins, game difference, point difference, points for, then a deterministic draw. Who the wildcard is stays unknown until every group has finished, so a match with the wildcard waits for every group of the stage and, for scheduling and validation, may contain any team of the stage. `count` must not exceed the number of groups and `rank` must be greater than `perGroup`.
+
+### Time allocation
+
+`matchDurationMinutes` is the scheduled court occupancy. `playMinutes` and `transitionMinutes` may break it down (and must add up to it); `medalMatchDurationMinutes` is a planning estimate for the final and third-place match. See [Time allocation](time-allocation.md).
+
 ## Standings and tiebreakers
 
 Per team: played, wins, losses, games won/lost, points for/against. The ordered tiebreaker list is required and must end with `draw`:

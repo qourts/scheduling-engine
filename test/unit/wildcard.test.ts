@@ -125,6 +125,12 @@ describe("wildcard qualification: configuration", () => {
     expect(codes(withRule({ count: 0, rank: 2 }))).toContain("INVALID_WILDCARDS");
   });
 
+  it("requires groups of equal size, because larger groups play more matches", () => {
+    const config = withRule({ count: 1, rank: 2 }, 1, 2);
+    config.divisions[0]!.teams = config.divisions[0]!.teams.slice(0, 7);
+    expect(codes(config)).toContain("INVALID_WILDCARDS");
+  });
+
   it("requires four qualifiers for a third-place match, counting wildcards", () => {
     const config = withRule({ count: 1, rank: 2 }, 1, 2);
     config.divisions[0]!.teams = config.divisions[0]!.teams.slice(0, 8);

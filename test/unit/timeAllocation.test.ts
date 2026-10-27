@@ -42,6 +42,15 @@ describe("time allocation: configuration", () => {
     expect(issue.message).toContain("25");
   });
 
+  it("rejects a play or transition value larger than the slot, even when only one is given", () => {
+    for (const patch of [{ transitionMinutes: 50 }, { playMinutes: 50 }]) {
+      const config = buildEchelonDayConfig();
+      const { playMinutes: _p, transitionMinutes: _t, ...rest } = config.divisions[0]!;
+      config.divisions[0] = { ...rest, ...patch };
+      expect(validateConfig(config).issues.map((i) => i.code)).toContain("TIME_ALLOCATION_MISMATCH");
+    }
+  });
+
   it("accepts 15 minutes of play + 5 of transition as a 20-minute slot with no extra turnover", () => {
     const config = buildEchelonDayConfig();
     expect(validateConfig(config).valid).toBe(true);

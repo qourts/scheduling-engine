@@ -147,14 +147,15 @@ function enumerate(inventory: Inventory, divisionId: Id, knockout: Match[], limi
   if (knockout.length === 0) return [new Map()];
   const structure = inventory.divisions.find((d) => d.divisionId === divisionId)!;
   const poolStage = structure.stages.find((s) => s.kind === "groups");
-  if (!poolStage || poolStage.kind !== "groups") return "the knockout is not fed by a group stage";
+  const groups = poolStage && poolStage.kind === "groups" ? poolStage.groups : [];
+  // A knockout seeded straight from teams has no pools and is enumerated by semifinal results alone.
+  if (groups.length === 0 && knockout.some((m) => m.slots.some((s) => s.type === "group_rank" || s.type === "wildcard"))) return "the knockout is not fed by a group stage";
 
   const entry = knockout.flatMap((m) => m.slots).filter((s): s is Extract<Slot, { type: "group_rank" | "wildcard" }> => s.type === "group_rank" || s.type === "wildcard");
   const wildcards = entry.filter((s): s is Extract<Slot, { type: "wildcard" }> => s.type === "wildcard");
   if (wildcards.length > 1) return "more than one wildcard seat is not enumerated";
   const wildcard = wildcards[0];
 
-  const groups = poolStage.groups;
   const depthOf = new Map<Id, number>(groups.map((g) => [g.groupId, 0]));
   for (const s of entry) if (s.type === "group_rank") depthOf.set(s.groupId, Math.max(depthOf.get(s.groupId)!, s.rank));
 

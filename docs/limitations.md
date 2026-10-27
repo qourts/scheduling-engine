@@ -23,6 +23,10 @@
 
 ## Known limitations (milestone 2)
 
+- **Wildcards:** one wildcard seat per knockout stage is supported (`count: 1`, taken from a rank below the automatic qualifiers). The wildcard takes the lowest seed and is not re-drawn if it meets its own pool's winner. Exhaustive outcome checking skips divisions with more than one wildcard seat or more than 200,000 outcomes and says so.
+- **Recovery for the Echelon regression scenario is an assumption.** The brief does not state it. With 10 minutes the approved category windows are provably infeasible; the largest feasible value is 5. See the acceptance report for the changes that work.
+- **Equivalent options at the feasibility limit.** When a schedule exists only with zero slack, the three strategies produce materially equivalent outcomes. The engine reports that and does not manufacture differences.
+
 - **Heuristic.** The optimizer reaches a local optimum of its moves under a budget. It never proves optimality, and an option that looks improvable may be. Reported lower bounds are optimistic and ignore court contention, rest and availability gaps.
 - **Construction can fail on very tight events** even when a schedule exists: placement is greedy with alternative orders and bounded randomised retries, and no backtracking. In the 288-match acceptance scenario day lengths ending 14:10 and 14:30 (about 94-99% of court capacity) end as `not_found`, while 14:40 is scheduled; whether the 14:30 case is truly infeasible is unknown. The engine reports `not_found` (explicitly not a proof) with reasons and the feasibility analysis, never an invalid schedule.
 - **Pool play can be split overnight.** Nothing in the objectives discourages a team's preliminary matches falling on different days. In the acceptance scenario Fastest Finish splits 47 of 160 teams across both days (longest wait 1305 minutes), Balanced 57, and Player-First none (longest wait 485 minutes). A same-day pool-play objective is a recommended refinement.

@@ -50,6 +50,10 @@ Construction is bounded: six deterministic attempts (the strategy's own weights,
 
 A search that merely ran out of time is not a failure: the options are valid, `diagnostics.timeLimited` is true and `option.budgetExhausted` marks the affected options.
 
+### Proofs that use the dependency chain
+
+Besides capacity, the feasibility analysis applies a tail bound to divisions that share the same courts and windows (for example every division of a category that has its own window). The last of their first-round matches (those with no prerequisite) cannot end before the courts have had time to play all first-round work, and the longest chain of dependent matches (recovery plus duration of each step) must still run after it. If that finish lies beyond the window, no schedule exists. For a category of 60 pool matches, 20 minutes each on 10 courts, a 20-minute semifinal and a 30-minute medal match, the pools cannot end before 120 minutes and the chain needs `50 + 2 x recovery` more: 70 minutes at 10 minutes of recovery, which exceeds a 180-minute window by 10 minutes. The remedies quantify the smallest changes (here recovery 5 minutes, or 10 more minutes per window). The bound ignores turnover, window gaps and every instruction, so it only ever fires when a schedule really cannot exist. A run that finds a proof reports it without climbing the construction ladder.
+
 ## Recovery definition
 
 Recovery is measured from the **end of allocated court time** of a player's previous match (start + the match's duration, which already contains any warm-up or changeover the configuration puts into the duration) to the **start** of the next match. Court turnover is a court buffer, not player rest: it is neither added to nor subtracted from recovery, and the hard rest rule uses the same basis. Active play ends no later than the allocated end, so the recovery reported is a lower bound on rest measured from the end of active play. If a venue wants rest to start after an assumed active-play end, shorten the match duration and carry the difference in `minRestMinutes`.
@@ -84,6 +88,10 @@ Recovery is measured where the participant is certain: consecutive definite matc
 ## Schedule report
 
 `analyzeSchedule(inventory, schedule)` describes any schedule (optimizer output or manually edited), computed from the schedule alone: planned start and finish, span, per-court matches, utilisation and idle minutes, recovery minimum, mean and maximum, back-to-back occurrences and affected teams, the teams with the shortest recovery and the longest waits, teams whose pool play is split across days, completion and preliminary-to-playoff transition per division and category, and warnings. A playoff transition is measured per first-round knockout match against the pools it depends on, because a semifinal only waits for its own pools. Warnings are `risk` (back-to-backs, unscheduled matches) or `info`.
+
+## Same-day pool play
+
+`same_day_preliminaries` (a preference) keeps each team's preliminary matches on one calendar day. `metrics.teamsSplitAcrossDays` and `analyzeSchedule(...).recovery.teamsSplitAcrossDays` report how many teams are split. On the two-day stress scenario the preference cut the split teams from 32/57/6 (Fastest Finish, Balanced, Player-First) to 2/4/0 without delaying Fastest Finish. A one-day event can never split a team.
 
 ## Fastest Finish guarantee
 

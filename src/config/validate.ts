@@ -159,6 +159,11 @@ export function validateConfig(config: TournamentConfig): ConfigValidationResult
       positiveInt(division.medalMatchDurationMinutes, `${path}.medalMatchDurationMinutes`, "INVALID_DURATION");
     }
     if (division.playMinutes !== undefined) positiveInt(division.playMinutes, `${path}.playMinutes`, "INVALID_DURATION");
+    for (const [name, value] of [["playMinutes", division.playMinutes], ["transitionMinutes", division.transitionMinutes]] as const) {
+      if (value !== undefined && value > division.matchDurationMinutes) {
+        error("TIME_ALLOCATION_MISMATCH", `${path}.${name}`, `${name} (${value}) cannot exceed matchDurationMinutes (${division.matchDurationMinutes}): the slot already contains it`);
+      }
+    }
     if (division.transitionMinutes !== undefined) nonNegativeInt(division.transitionMinutes, `${path}.transitionMinutes`, "INVALID_DURATION");
     if (division.playMinutes !== undefined && division.transitionMinutes !== undefined && division.playMinutes + division.transitionMinutes !== division.matchDurationMinutes) {
       error(
@@ -321,6 +326,9 @@ function validateStages(
           const wildcards = stage.source.wildcards;
           const wildcardCount = wildcards?.count ?? 0;
           if (wildcards) {
+            if (teamCount % Math.max(1, groupCount) !== 0) {
+              error("INVALID_WILDCARDS", `${spath}.source.wildcards`, "Wildcards need groups of equal size: teams in larger groups play more matches, so their results cannot be compared fairly");
+            }
             if (!Number.isInteger(wildcards.count) || wildcards.count < 1 || wildcards.count > groupCount) {
               error("INVALID_WILDCARDS", `${spath}.source.wildcards.count`, `wildcards.count must be an integer from 1 to the number of groups (${groupCount})`);
             }

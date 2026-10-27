@@ -107,7 +107,7 @@ export function optimizeSchedules(inventory: Inventory, options: OptimizeOptions
   // proof with one construction attempt as an example of what does not fit.
   const feasibility = analyzeFeasibility(constraints.inventory);
   if (feasibility.status === "infeasible") {
-    const example = construct(ctx, { order: "critical", weights: strategies[0]!.weights, candidatesPerCourt: 1 });
+    const example = construct(ctx, { order: "critical", weights: (strategies[0] ?? STRATEGIES.balanced_operations).weights, candidatesPerCourt: 1 });
     timing.constructionMs = lap();
     return emptyResult("no_schedule", seed, clock() - startedAt, inventory, {
       failure: explainFailure(ctx, feasibility, example),

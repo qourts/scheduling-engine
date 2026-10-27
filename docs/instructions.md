@@ -31,6 +31,9 @@ Roles are derived from the bracket structure, so "medal matches" works for every
 | `min_rest` | Minimum minutes of rest between a player's matches in the listed divisions | Replaces the division minimum (warns if it lowers it) | Gaps below the target are penalised |
 | `locked_placement` | A match fixed to a court, day and start | Hard (frozen) | Not supported (use `time_window` or `court_allowlist`) |
 | `consecutive_blocks` | Listed divisions played as consecutive blocks, in order | Not supported | Time-span overlap between divisions, weighted |
+| `same_day_preliminaries` | Each team's preliminary matches stay on one calendar day (all divisions unless `divisionIds` is given) | Not supported (configure a single tournament day instead) | Teams split across days, weighted |
+
+`same_day_preliminaries` is for multi-day events and never changes the event dates: a one-day event stays one day, whatever is preferred. `measurePreferences` reports, per preference instruction, what is violated and by how much, independently of the optimizer.
 
 `TimeBound` is `{ minute, day? }`. With `day` it is an absolute instant (a deadline, "not before Saturday 13:00"). Without `day` it is a clock rule that repeats on every tournament day ("before 12:00").
 
