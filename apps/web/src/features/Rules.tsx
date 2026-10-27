@@ -106,6 +106,18 @@ export function Rules({ onNext }: { onNext: () => void }) {
             {manual ? "Hide rule editor" : "Build a rule by hand"}
           </button>
         </div>
+        {(w.project!.spec.demoRequests?.length ?? 0) > 0 && (
+          <div className="stack">
+            <span className="faint">Try these requests for the demo (click to add):</span>
+            <div className="row">
+              {w.project!.spec.demoRequests!.map((r) => (
+                <button key={r} className="btn small" onClick={() => setText((t) => (t.trim() ? `${t.trim()}\n${r}` : r))}>
+                  {r}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {ai === false && <p className="faint">AI interpretation is not set up. The built-in interpreter understands the patterns below, and you can always build a rule by hand.</p>}
         {aiError && <Banner tone="warn" title="AI interpretation failed">{aiError}</Banner>}
         <details>
@@ -226,7 +238,8 @@ function PendingCard({ p, existing, onChange, onConfirm, onDiscard }: { p: Pendi
 }
 
 function ConfirmedCard({ instruction, source, origin, onRemove, onWeight }: { instruction: SchedulingInstruction; source: string | null; origin: string; onRemove: () => void; onWeight: (n: number) => void }) {
-  const description = stripStrength(useDescription(instruction));
+  // The engine's own wording, kept whole ("Must: ..." or "Should (weight n): ...") so a confirmed rule reads as a rule.
+  const description = useDescription(instruction);
   return (
     <div className="card flat row">
       <Pill tone={instruction.strength === "mandatory" ? "bad" : "info"}>{instruction.strength === "mandatory" ? "Mandatory" : "Preferred"}</Pill>

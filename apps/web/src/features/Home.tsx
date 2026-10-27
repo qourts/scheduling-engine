@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { blankEvent } from "../domain/spec.js";
 import { SAMPLES } from "../domain/samples.js";
+import { reconcileApproval } from "../domain/integrity.js";
 import { importProjectJson } from "../storage/exchange.js";
 import { useWorkspace } from "../state/workspace.js";
 import { Banner, Pill } from "../ui/kit.js";
@@ -14,7 +15,9 @@ export function Home({ onOpened }: { onOpened: () => void }) {
     const result = importProjectJson(await f.text());
     if (!result.ok) return setImportError(result.error);
     setImportError(null);
-    w.importProject(result.project);
+    // An imported approval is only honoured if it is consistent and the engine still passes the approved schedule.
+    const { project, notes } = await reconcileApproval(w.runner, result.project);
+    w.importProject(project, notes);
     onOpened();
   };
 

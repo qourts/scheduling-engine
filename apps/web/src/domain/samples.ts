@@ -101,7 +101,48 @@ export function smallClubDay(): EventSpec {
   };
 }
 
+/**
+ * The guided demonstration: a realistic two-day club championship with players who appear in more than one division, so rest
+ * and overlap rules matter. Small enough to generate in a couple of seconds, rich enough to exercise every workflow step.
+ */
+export function qourtsChampionshipDemo(): EventSpec {
+  const categories = [category("MD", "Men's Doubles", "men"), category("WD", "Women's Doubles", "women"), category("XD", "Mixed Doubles", "mixed")];
+  const d = (id: string, name: string, cat: string, level: string, teams: number, pools: number, perPool: number, wildcard: 0 | 1, seed: number, shared: Record<number, string> = {}) => {
+    const division_ = division(id, name, cat, level, teams, pools, perPool, wildcard, seed);
+    return { ...division_, teams: division_.teams.map((t, i) => shared[i] ?? t) };
+  };
+  const divisions = [
+    d("MD-ADV", "Advanced Men's Doubles", "MD", "Advanced", 8, 2, 2, 0, 21, { 0: "Ana Reyes / Ben Lim" }),
+    d("MD-INT", "Intermediate Men's Doubles", "MD", "Intermediate", 8, 2, 2, 0, 22, { 1: "Dan Cruz / Omar Tan" }),
+    d("WD-ADV", "Advanced Women's Doubles", "WD", "Advanced", 8, 2, 2, 0, 23, { 0: "Carla Diaz / Hana Ong" }),
+    d("WD-INT", "Intermediate Women's Doubles", "WD", "Intermediate", 8, 2, 2, 0, 24),
+    d("XD-ADV", "Advanced Mixed Doubles", "XD", "Advanced", 8, 2, 2, 0, 25, { 0: "Carla Diaz / Ben Lim" }),
+    d("XD-INT", "Intermediate Mixed Doubles", "XD", "Intermediate", 12, 3, 1, 1, 26, { 2: "Elena Go / Omar Tan" }),
+  ];
+  return {
+    name: "Qourts Club Championship (guided demo)",
+    days: ["2026-11-28", "2026-11-29"],
+    dayWindow: { start: 8 * 60, end: 18 * 60 },
+    courts: newCourts(6),
+    categories,
+    divisions,
+    recoveryMinutes: 20,
+    courtTurnoverMinutes: 5,
+    maxMatchesPerPlayerPerDay: null,
+    experimentalNote: null,
+    demoRequests: [
+      "Advanced Men's Doubles must finish by 15:00 on day 1.",
+      "Court 3 is unavailable 12:00-13:30 on day 1.",
+      "Reserve Court 6 for medal matches.",
+      "Women's Doubles cannot start before 1 PM on day 2.",
+      "Prefer to keep pool play on one day.",
+      "At least 30 minutes between matches for Intermediate.",
+    ],
+  };
+}
+
 export const SAMPLES: { id: string; title: string; blurb: string; build: () => EventSpec }[] = [
+  { id: "demo", title: "Guided demo: club championship", blurb: "6 courts, 6 divisions, 2 days, 102 matches, players in several divisions. Follow docs/operator-walkthrough.md.", build: qourtsChampionshipDemo },
   { id: "small", title: "Small club day", blurb: "4 courts, 2 divisions, 1 day. Generates in a blink.", build: smallClubDay },
   { id: "weekend", title: "Club weekend open", blurb: "10 courts, 12 divisions, 2 days, 192 matches.", build: clubWeekendOpen },
   { id: "echelon", title: "Echelon-style one day", blurb: "Category windows, wildcards, zero-slack. Experimental assumptions.", build: echelonStyleDay },

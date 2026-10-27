@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Schedule, ScheduleReport } from "@engine";
 import type { MatchInfo } from "../engine/core.js";
 import { approvalRisks } from "../domain/editing.js";
-import { newId, type Revision } from "../domain/project.js";
+import { inputsKey, newId, type Revision } from "../domain/project.js";
 import { clock } from "../domain/spec.js";
 import { downloadText, exportProjectJson, matrixToCsv, safeFilename, scheduleToCsv } from "../storage/exchange.js";
 import { useWorkspace } from "../state/workspace.js";
@@ -59,7 +59,7 @@ export function Export() {
   const base = `${safeFilename(project.spec.name)}-${tag.toLowerCase()}`;
 
   const addRevision = (status: Revision["status"], name: string, acknowledgedRisks: string[]) => {
-    const revision: Revision = { id: newId("rev"), at: Date.now(), label: name, status, schedule: structuredClone(working.schedule), locks: [...working.locks], acknowledgedRisks };
+    const revision: Revision = { id: newId("rev"), at: Date.now(), label: name, status, schedule: structuredClone(working.schedule), locks: [...working.locks], acknowledgedRisks, inputsKey: inputsKey(project.spec, project.rules) };
     w.update((p) => ({ ...p, revisions: [...p.revisions, revision], ...(status === "approved" ? { status: "approved" as const, approvedRevisionId: revision.id } : {}) }));
   };
 

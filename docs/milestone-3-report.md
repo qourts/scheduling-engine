@@ -35,13 +35,25 @@ Branch: `feature/milestone-3-app`. Not merged. The engine in `src/` is unchanged
 ## Tests and checks
 
 - Engine: 262 tests unchanged and passing.
-- App: 45 tests across 6 files: sample events against the real engine, the deterministic parser (including Women's versus Men's, High Intermediate versus Intermediate, "cannot start before" read as a lower bound, undecided strength), engine-validated move, swap and lock edits, IndexedDB store and fallback, versioned JSON round trip, CSV formula-injection protection, the AI adapter with a mocked network, and the confirm-before-apply flow in the real Rules screen.
+- App: 67 tests across 9 files, including lock-preserving regeneration and lock conflicts, approval withdrawal on every edit path and for tampered imports, and the guided demo generating with all its requests. Earlier coverage: sample events against the real engine, the deterministic parser (including Women's versus Men's, High Intermediate versus Intermediate, "cannot start before" read as a lower bound, undecided strength), engine-validated move, swap and lock edits, IndexedDB store and fallback, versioned JSON round trip, CSV formula-injection protection, the AI adapter with a mocked network, and the confirm-before-apply flow in the real Rules screen.
 - Typecheck, production build and `npm audit` clean.
 - Manual run in a real browser: configure, interpret and confirm rules, generate (including an honest `not_found` for a too-tight rule), compare, pick, select, see an engine rejection onto a reserved court, preview and apply a valid swap with impact, undo and redo, approve with risk acknowledgement, reload and reopen from IndexedDB.
 
+## Acceptance hardening (second pass)
+
+**Locks survive regeneration.** Locked matches are passed to the engine as mandatory `locked_placement` instructions, so the optimizer freezes them and builds around them. Every option returned keeps each lock exactly in place, and choosing an option keeps the locks (it refuses, and says so, if an option ever failed to). When locks make the event infeasible, nothing is dropped. The app explains which locks conflict (with each other, with a rule such as a court blackout, or with the pools a knockout match depends on) and offers: revise the locks on the Schedule step, release only the conflicting locks, release all locks, or keep everything as it is. A release always needs a confirmation and is recorded in the notes of the new options. For "not found" and "proven impossible" results the app asks the engine again without the locks, so it only blames the locks when they are the cause.
+
+**Approval cannot go stale.** Approval is a claim about one exact schedule, its locks, the event setup and the confirmed rules. It is now enforced centrally on every project update, so it is withdrawn to draft (with a visible message) after a drag, a swap, a lock change, undo or redo, regeneration, restoring a revision, or any change to the setup or rules. Undoing back to the approved schedule still leaves a draft; approving again is a deliberate act. When a project is opened from storage or imported, its approval is kept only if it is consistent with its approved revision and the engine still passes the schedule; a hand-edited file cannot carry an approval the engine would not give. The approved revision itself is always preserved.
+
+**Design lint.** The broad file-level ignore was removed (it was never committed). The one finding was a medal-match underline; it is now a small ★ badge, with the legend updated.
+
+**Operator testing.** `npm run app` serves http://localhost:5173. A guided demo event ("Qourts Club Championship": 6 courts, 6 divisions, 2 days, 102 matches, players in several divisions, six suggested requests) and [operator-walkthrough.md](operator-walkthrough.md) let an operator run the whole workflow unaided.
+
+Verified in a real browser on the demo event: six rules confirmed (two needed a hard-or-preferred choice), three options generated in 1.4 s, three locks kept exactly through regeneration and a different option, a blackout over a lock explained with the revise/release choices and a single-lock release, approval, reload and reopen, and approval withdrawn by a swap with the notice shown.
+
 ## Known limitations
 
-- Locks do not carry into regeneration, and regenerating replaces the working schedule after a confirmation.
+- Regenerating replaces the working schedule after a confirmation; locked matches are kept, other manual edits are not.
 - Drag-and-drop uses HTML5 drag events, which do not work on touch screens. The click path (select, then the panel) is the touch alternative. Full keyboard drag is not implemented; selecting with Enter and the nudge buttons are the keyboard path.
 - The AI adapter is implemented and unit-tested against a mocked network but has not been exercised against the live API, because no key was configured and no charges were authorised.
 - The adapter is a local development server plugin. A hosted deployment needs authentication and rate limiting in front of it first.

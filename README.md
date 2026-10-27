@@ -84,7 +84,7 @@ Requires Node 20+. Dev dependencies: TypeScript, Vitest, fast-check.
 
 ## Smart Scheduler app (milestone 3)
 
-An internal, local-first operator application in [`apps/web`](apps/web) built on this engine. Run it locally with `npm install` then `npm run dev -w apps/web`. See [docs/milestone-3-report.md](docs/milestone-3-report.md).
+An internal, local-first operator application in [`apps/web`](apps/web) built on this engine. Run it locally with `npm install` then `npm run app`, and open http://localhost:5173. A step-by-step guide is in [docs/operator-walkthrough.md](docs/operator-walkthrough.md). See [docs/milestone-3-report.md](docs/milestone-3-report.md).
 
 ## Documentation
 

@@ -26,7 +26,8 @@
     "test:watch": "vitest",
     "check": "npm run typecheck && npm test",
     "bench": "npm run build && node bench/run.mjs",
-    "acceptance": "npm run build && node bench/acceptance.mjs --write"
+    "acceptance": "npm run build && node bench/acceptance.mjs --write",
+    "app": "npm run dev -w apps/web"
   },
   "devDependencies": {
     "@types/node": "^22.19.1",

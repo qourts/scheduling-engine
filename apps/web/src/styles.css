@@ -128,7 +128,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .m-block { position: absolute; top: 5px; height: 38px; border-radius: 9px; padding: 3px 7px; font-size: 11px; line-height: 1.2; overflow: hidden; cursor: grab; border: 1px solid hsl(var(--h) 45% 55% / 0.6); background: hsl(var(--h) 70% 90%); color: hsl(var(--h) 60% 18%); user-select: none; white-space: nowrap; text-overflow: ellipsis; }
 @media (prefers-color-scheme: dark) { .m-block { background: hsl(var(--h) 40% 22%); color: hsl(var(--h) 80% 90%); border-color: hsl(var(--h) 50% 45%); } }
 .m-block b { display: block; font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
-.m-block.medal { box-shadow: inset 0 -3px 0 var(--accent); }
+.m-block.medal::after { content: "★"; position: absolute; right: 4px; bottom: 1px; font-size: 11px; color: var(--warn); }
 .m-block.provisional { border-style: dashed; }
 .m-block.sel { outline: 3px solid var(--info); z-index: 4; }
 .m-block.locked { cursor: not-allowed; border-width: 2px; }

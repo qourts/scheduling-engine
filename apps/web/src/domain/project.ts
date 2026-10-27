@@ -44,6 +44,8 @@ export interface Revision {
   locks: string[];
   /** Risks the operator accepted when approving (for example a zero-slack schedule). */
   acknowledgedRisks: string[];
+  /** Fingerprint of the setup and rules this revision was made under; approval holds only while it still matches. */
+  inputsKey: string;
 }
 
 export interface WorkingSchedule {
@@ -74,11 +76,12 @@ export function newProject(spec: EventSpec): Project {
   return { schemaVersion: PROJECT_SCHEMA_VERSION, id: newId("proj"), createdAt: now, updatedAt: now, spec, rules: [], generation: null, working: null, revisions: [], status: "draft", approvedRevisionId: null };
 }
 
-export const lockedAssignments = (w: WorkingSchedule): Assignment[] => w.schedule.assignments.filter((a) => w.locks.includes(a.matchId));
-
-/** Stable fingerprint of what generation depends on: the event spec and the confirmed rules. */
-export function inputsKey(spec: EventSpec, rules: ConfirmedRule[]): string {
-  const text = JSON.stringify({ spec, rules: rules.map((r) => r.instruction) });
+/**
+ * Stable fingerprint of what generation depends on: the event spec, the confirmed rules and, when regenerating around them,
+ * the locked placements. Approvals fingerprint the spec and rules only (locks are compared separately).
+ */
+export function inputsKey(spec: EventSpec, rules: ConfirmedRule[], locked: readonly Assignment[] = []): string {
+  const text = JSON.stringify({ spec, rules: rules.map((r) => r.instruction), locked: [...locked].sort((a, b) => a.matchId.localeCompare(b.matchId)).map((a) => [a.matchId, a.courtId, a.day, a.start]) });
   let h = 5381;
   for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
   return `${text.length}:${(h >>> 0).toString(36)}`;

@@ -351,7 +351,7 @@ export function Matrix({ onNext }: { onNext: () => void }) {
               <span key={d.id} className="sw" style={{ "--h": hue.get(d.id) } as CSSProperties}><i />{d.name}</span>
             ))}
           </div>
-          <p className="faint">Dashed outline: playoff match whose players are not known yet, checked against every team that could reach it. Yellow underline: medal match. Hatched: court closed.</p>
+          <p className="faint">Dashed outline: playoff match whose players are not known yet, checked against every team that could reach it. Star: medal match. Hatched: court closed.</p>
         </div>
 
         <aside className="side" aria-label="Match details">

@@ -6,7 +6,7 @@ import { Matrix } from "./features/Matrix.js";
 import { Rules } from "./features/Rules.js";
 import { Wizard } from "./features/Wizard.js";
 import { useWorkspace, type SaveState } from "./state/workspace.js";
-import { Pill } from "./ui/kit.js";
+import { Banner, Pill } from "./ui/kit.js";
 import { savedAgo } from "./ui/format.js";
 
 export type StepId = "setup" | "rules" | "compare" | "schedule" | "export";
@@ -64,6 +64,14 @@ export default function App() {
       )}
 
       <main>
+        {w.notice && (
+          <div className="row" style={{ marginBottom: 16 }}>
+            <div style={{ flex: 1 }}>
+              <Banner tone="warn" title="Approval withdrawn">{w.notice}</Banner>
+            </div>
+            <button className="btn small" onClick={w.dismissNotice}>Dismiss</button>
+          </div>
+        )}
         {!w.project ? (
           <Home onOpened={() => setStep("setup")} />
         ) : step === "setup" ? (
@@ -71,7 +79,7 @@ export default function App() {
         ) : step === "rules" ? (
           <Rules onNext={() => setStep("compare")} />
         ) : step === "compare" ? (
-          <Compare onPicked={() => setStep("schedule")} />
+          <Compare onPicked={() => setStep("schedule")} onReviseLocks={() => setStep("schedule")} />
         ) : step === "schedule" ? (
           <Matrix onNext={() => setStep("export")} />
         ) : (

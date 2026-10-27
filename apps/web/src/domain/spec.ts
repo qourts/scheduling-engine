@@ -77,6 +77,8 @@ export interface EventSpec {
   maxMatchesPerPlayerPerDay: number | null;
   /** Free-text caveats shown wherever this event appears, for example "experimental assumption". */
   experimentalNote: string | null;
+  /** Example sentences an operator can drop into the special-rules box (used by the demonstration event). */
+  demoRequests?: string[];
 }
 
 export const DEFAULT_TIEBREAKERS: Tiebreaker[] = ["wins", "head_to_head", "game_difference", "point_difference", "points_for", "draw"];
