@@ -51,6 +51,10 @@ Branch: `feature/milestone-3-app`. Not merged. The engine in `src/` is unchanged
 
 Verified in a real browser on the demo event: six rules confirmed (two needed a hard-or-preferred choice), three options generated in 1.4 s, three locks kept exactly through regeneration and a different option, a blackout over a lock explained with the revise/release choices and a single-lock release, approval, reload and reopen, and approval withdrawn by a swap with the notice shown.
 
+## Visual redesign
+
+A branded redesign (Qourts design tokens, navy shell, redesigned matrix and match inspector) lives on branch `ui/qourts-redesign`. See [design/README.md](design/README.md).
+
 ## Known limitations
 
 - Regenerating replaces the working schedule after a confirmation; locked matches are kept, other manual edits are not.

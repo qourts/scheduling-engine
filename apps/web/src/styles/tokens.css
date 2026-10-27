@@ -1,0 +1,169 @@
+/*
+ * Qourts design tokens: the single source of truth for colour, type, space, radius, elevation and motion.
+ * Components reference semantic tokens (--ink, --surface, --accent...) and never raw hex values.
+ *
+ * Brand palette, sampled from the official Qourts artwork and refined for accessibility:
+ *   navy #0D151F, mint #7CDFB9, turquoise #5DD0BF, aqua #3ACFCF, cyan #23BCDB.
+ * The mint-to-cyan gradient is a signature accent used sparingly (primary call to action, active step, medal matches, loading).
+ */
+:root {
+  /* ---- brand primitives ---- */
+  --q-navy-950: #090f17;
+  --q-navy-900: #0d151f; /* official navy */
+  --q-navy-800: #131e2b;
+  --q-navy-700: #1a2837;
+  --q-navy-600: #243649;
+  --q-navy-500: #34495f;
+  --q-mint: #7cdfb9;
+  --q-turquoise: #5dd0bf;
+  --q-aqua: #3acfcf;
+  --q-cyan: #23bcdb;
+  --q-gradient: linear-gradient(100deg, var(--q-mint) 0%, var(--q-aqua) 55%, var(--q-cyan) 100%);
+
+  /* ---- type ---- */
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, Menlo, monospace;
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 15px;
+  --fs-lg: 17px;
+  --fs-xl: 22px;
+  --fs-2xl: 28px;
+  --fs-display: 44px;
+  --lh-tight: 1.2;
+  --lh-body: 1.5;
+
+  /* ---- space (4px grid) ---- */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-10: 40px;
+  --s-12: 48px;
+
+  /* ---- shape and motion ---- */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 18px;
+  --r-pill: 999px;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur: 200ms;
+
+  /* ---- app shell (always navy, in both workspace themes) ---- */
+  --shell-bg: var(--q-navy-900);
+  --shell-bg-2: var(--q-navy-800);
+  --shell-line: rgb(255 255 255 / 10%);
+  --shell-ink: #f2f7fa;
+  --shell-ink-2: #aebdca;
+  --shell-ink-3: #7f92a3;
+  --plate-bg: #f6fafa; /* light plate that carries the official logo, whose tagline is dark */
+
+  /* ---- workspace, light (default: best contrast for hundreds of dense, colourful items) ---- */
+  --ws-bg: #f2f5f7;
+  --surface: #ffffff;
+  --surface-2: #f7f9fa;
+  --surface-3: #eef2f5;
+  --line: #dce4ea;
+  --line-strong: #bccad5;
+  --ink: #0d151f;
+  --ink-2: #3a4c5e;
+  --ink-3: #5a6d80;
+  --accent: #0b6f82; /* accessible teal for text, links and focus on light surfaces (AA on white) */
+  --accent-soft: #e3f5f7;
+  --focus: #0d8aa3;
+  --on-gradient: #0d151f;
+  --btn-primary-bg: var(--q-navy-900);
+  --btn-primary-ink: #ffffff;
+
+  /* status */
+  --ok: #17784b;
+  --ok-bg: #e5f5ed;
+  --warn: #8f5500;
+  --warn-bg: #fff3d6;
+  --bad: #b3261e;
+  --bad-bg: #fdeceb;
+  --info: #0b6f82;
+  --info-bg: #e3f5f7;
+
+  /* elevation */
+  --sh-1: 0 1px 2px rgb(13 21 31 / 6%), 0 1px 1px rgb(13 21 31 / 4%);
+  --sh-2: 0 2px 6px rgb(13 21 31 / 8%), 0 10px 28px rgb(13 21 31 / 8%);
+  --sh-pop: 0 12px 40px rgb(13 21 31 / 28%);
+
+  /* matrix */
+  --mx-row: 60px;
+  --mx-card-h: 48px;
+  --mx-court-w: 132px;
+  --mx-head-h: 38px;
+  --mx-prelim-bg: #ffffff;
+  --mx-prelim-line: #7a90a3;
+  --mx-prelim-ink: #0d151f;
+  --mx-semi-bg: #e2f7ef;
+  --mx-semi-line: #2f9a74;
+  --mx-semi-ink: #0b3d2c;
+  --mx-medal-bg: #0d151f;
+  --mx-medal-line: #0d151f;
+  --mx-medal-ink: #ffffff;
+  --mx-grid: #e5ebf0;
+  --mx-grid-strong: #cfd9e1;
+  --mx-closed: #e9eef2;
+  --mx-select: #0d8aa3;
+  --mx-cat-1: #3acfcf;
+  --mx-cat-2: #7cdfb9;
+  --mx-cat-3: #23bcdb;
+  --mx-cat-4: #8aa0b4;
+  color-scheme: light;
+}
+
+/* ---- workspace, dark (optional): the shell stays navy, the working area follows the operator's choice ---- */
+[data-workspace="dark"] {
+  --ws-bg: #0f1823;
+  --surface: #152231;
+  --surface-2: #1a2a3b;
+  --surface-3: #203346;
+  --line: #28394c;
+  --line-strong: #3b5068;
+  --ink: #eaf2f7;
+  --ink-2: #b9c8d4;
+  --ink-3: #8ea3b5;
+  --accent: #6fd9d0;
+  --accent-soft: #123a40;
+  --focus: #6fd9d0;
+  --btn-primary-bg: #eaf2f7;
+  --btn-primary-ink: #0d151f;
+  --ok: #5fd39c;
+  --ok-bg: #12301f;
+  --warn: #f0b84d;
+  --warn-bg: #3a2c0c;
+  --bad: #ff8b80;
+  --bad-bg: #3b1a17;
+  --info: #6fd9d0;
+  --info-bg: #123a40;
+  --sh-1: 0 1px 2px rgb(0 0 0 / 30%);
+  --sh-2: 0 2px 6px rgb(0 0 0 / 30%), 0 10px 28px rgb(0 0 0 / 30%);
+  --mx-prelim-bg: #1e3247;
+  --mx-prelim-line: #5f7a96;
+  --mx-prelim-ink: #f1f7fb;
+  --mx-semi-bg: #134440;
+  --mx-semi-line: #46b999;
+  --mx-semi-ink: #d9fbef;
+  --mx-medal-bg: linear-gradient(110deg, #7cdfb9, #3acfcf 60%, #23bcdb);
+  --mx-medal-line: #7cdfb9;
+  --mx-medal-ink: #0d151f;
+  --mx-grid: #213246;
+  --mx-grid-strong: #2e4258;
+  --mx-closed: #101a26;
+  --mx-select: #7cdfb9;
+  color-scheme: dark;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur: 0ms;
+  }
+}

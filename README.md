@@ -98,4 +98,5 @@ An internal, local-first operator application in [`apps/web`](apps/web) built on
 - [Feasibility analysis](docs/feasibility.md)
 - [Assumptions and known limitations](docs/limitations.md)
 - [Tracked future requirements](docs/future-requirements.md)
+- [Smart Scheduler design system and redesign](docs/design/README.md)
 - [Architecture decision records](docs/adr/)

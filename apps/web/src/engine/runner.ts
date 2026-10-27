@@ -13,11 +13,12 @@ export type EngineCalls = {
   validateRules: typeof Core.validateRules;
   describe: typeof Core.describe;
   matchInfo: typeof Core.matchInfo;
+  inspectMatch: typeof Core.inspectMatch;
 };
 
 export type EngineRunner = { [K in keyof EngineCalls]: (...args: Parameters<EngineCalls[K]>) => Promise<ReturnType<EngineCalls[K]>> };
 
-export const ENGINE_CALL_NAMES: (keyof EngineCalls)[] = ["prepare", "generate", "check", "checkInstructionProposal", "validateRules", "describe", "matchInfo"];
+export const ENGINE_CALL_NAMES: (keyof EngineCalls)[] = ["prepare", "generate", "check", "checkInstructionProposal", "validateRules", "describe", "matchInfo", "inspectMatch"];
 
 export interface WorkerRequest {
   id: number;

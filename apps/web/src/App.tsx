@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Compare } from "./features/Compare.js";
 import { Export } from "./features/Export.js";
 import { Home } from "./features/Home.js";
@@ -6,7 +6,8 @@ import { Matrix } from "./features/Matrix.js";
 import { Rules } from "./features/Rules.js";
 import { Wizard } from "./features/Wizard.js";
 import { useWorkspace, type SaveState } from "./state/workspace.js";
-import { Banner, Pill } from "./ui/kit.js";
+import { Icon } from "./ui/icons.js";
+import { Banner, LOGO_ALT, LOGO_SRC, Pill } from "./ui/kit.js";
 import { savedAgo } from "./ui/format.js";
 
 export type StepId = "setup" | "rules" | "compare" | "schedule" | "export";
@@ -18,6 +19,28 @@ const STEPS: { id: StepId; label: string }[] = [
   { id: "schedule", label: "Schedule" },
   { id: "export", label: "Approve & export" },
 ];
+
+type Theme = "light" | "dark";
+const THEME_KEY = "qourts.workspace-theme";
+
+function useWorkspaceTheme(): [Theme, (t: Theme) => void] {
+  const [theme, setTheme] = useState<Theme>(() => {
+    try {
+      return localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light";
+    } catch {
+      return "light";
+    }
+  });
+  useEffect(() => {
+    document.documentElement.dataset.workspace = theme;
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      /* storage can be blocked; the theme still applies for this session */
+    }
+  }, [theme]);
+  return [theme, setTheme];
+}
 
 function SaveIndicator() {
   const w = useWorkspace();
@@ -37,33 +60,51 @@ function SaveIndicator() {
 export default function App() {
   const w = useWorkspace();
   const [step, setStep] = useState<StepId>("setup");
+  const [theme, setTheme] = useWorkspaceTheme();
+  const project = w.project;
+  const done: Record<StepId, boolean> = {
+    setup: !!project && project.spec.divisions.length > 0,
+    rules: !!project && project.rules.length > 0,
+    compare: !!project?.generation,
+    schedule: !!project?.working,
+    export: !!project && project.status !== "draft",
+  };
 
   return (
     <div className="app">
-      <header className="topbar">
-        <button className="brand" onClick={() => (w.project ? w.closeProject() : undefined)} aria-label="Qourts Smart Scheduler home">
-          <span className="mark" aria-hidden="true">Q</span>
-          <span>Qourts <small>Smart Scheduler</small></span>
-        </button>
-        {w.project && <span className="projname">{w.project.spec.name}</span>}
-        {w.project && <Pill tone={w.project.status === "draft" ? undefined : "ok"}>{w.project.status}</Pill>}
-        <span className="spacer" />
-        {w.project && <SaveIndicator />}
-        {w.project && <button className="btn small" onClick={() => void w.saveNow()}>Save now</button>}
+      <header className="shell">
+        <div className="shell-top">
+          <button className="logo-plate" onClick={() => (project ? w.closeProject() : undefined)} aria-label="Qourts Smart Scheduler home">
+            <img src={LOGO_SRC} alt={LOGO_ALT} />
+          </button>
+          <span className="shell-product">Smart Scheduler</span>
+          {project && (
+            <div className="shell-project">
+              <span className="shell-name" title={project.spec.name}>{project.spec.name}</span>
+              <Pill {...(project.status === "draft" ? {} : { tone: "ok" as const })}>{project.status}</Pill>
+            </div>
+          )}
+          <span className="spacer" />
+          {project && <SaveIndicator />}
+          <div className="seg" role="group" aria-label="Workspace theme">
+            <button aria-pressed={theme === "light"} onClick={() => setTheme("light")} title="Light workspace"><Icon name="sun" size={15} /><span className="sr-only">Light workspace</span></button>
+            <button aria-pressed={theme === "dark"} onClick={() => setTheme("dark")} title="Dark workspace"><Icon name="moon" size={15} /><span className="sr-only">Dark workspace</span></button>
+          </div>
+          {project && <button className="btn small" onClick={() => void w.saveNow()}>Save now</button>}
+        </div>
+        {project && (
+          <nav className="steps" aria-label="Workflow">
+            {STEPS.map((s, i) => (
+              <button key={s.id} className={`step${done[s.id] && step !== s.id ? " done" : ""}`} aria-current={step === s.id ? "step" : undefined} onClick={() => setStep(s.id)}>
+                <span className="n">{done[s.id] && step !== s.id ? <Icon name="check" size={13} /> : i + 1}</span>
+                {s.label}
+              </button>
+            ))}
+          </nav>
+        )}
       </header>
 
-      {w.project && (
-        <nav className="steps" aria-label="Workflow">
-          {STEPS.map((s, i) => (
-            <button key={s.id} className="step" aria-current={step === s.id ? "step" : undefined} onClick={() => setStep(s.id)}>
-              <span className="n">{i + 1}</span>
-              {s.label}
-            </button>
-          ))}
-        </nav>
-      )}
-
-      <main>
+      <main className={`workspace${project && step === "schedule" ? " wide" : ""}`}>
         {w.notice && (
           <div className="row" style={{ marginBottom: 16 }}>
             <div style={{ flex: 1 }}>
@@ -72,7 +113,7 @@ export default function App() {
             <button className="btn small" onClick={w.dismissNotice}>Dismiss</button>
           </div>
         )}
-        {!w.project ? (
+        {!project ? (
           <Home onOpened={() => setStep("setup")} />
         ) : step === "setup" ? (
           <Wizard onDone={() => setStep("rules")} />
@@ -81,7 +122,7 @@ export default function App() {
         ) : step === "compare" ? (
           <Compare onPicked={() => setStep("schedule")} onReviseLocks={() => setStep("schedule")} />
         ) : step === "schedule" ? (
-          <Matrix onNext={() => setStep("export")} />
+          <Matrix onNext={() => setStep("export")} onGenerate={() => setStep("compare")} />
         ) : (
           <Export />
         )}

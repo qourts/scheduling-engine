@@ -11,3 +11,9 @@ export const savedAgo = (at: number | null): string => {
   const seconds = Math.round((Date.now() - at) / 1000);
   return seconds < 5 ? "just now" : seconds < 90 ? `${seconds}s ago` : `${Math.round(seconds / 60)} min ago`;
 };
+
+/** "2026-11-29 17:40" becomes "Sun, 29 Nov · 17:40". Presentation only; the value itself comes from the engine report. */
+export const shortMoment = (label: string): string => {
+  const m = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})$/.exec(label);
+  return m ? `${dayLabel(m[1]!)} · ${m[2]}` : label;
+};

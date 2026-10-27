@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import type { PrepareResult } from "../engine/core.js";
 import { DEFAULT_TIEBREAKERS, clock, emptyFormat, newCourts, parseClockInput, type CategorySpec, type CourtSpec, type DayWindow, type DivisionSpec, type EventSpec, type FormatSpec } from "../domain/spec.js";
 import { useWorkspace } from "../state/workspace.js";
-import { Banner, Field, Pill, Segmented, Stat } from "../ui/kit.js";
+import { Banner, Field, Pill, Progress, Segmented, Stat } from "../ui/kit.js";
+import { useConfirm } from "../ui/confirm.js";
 
 type Part = "event" | "courts" | "divisions" | "review";
 const PARTS: { id: Part; label: string }[] = [
@@ -296,6 +297,7 @@ function DivisionsPart({ spec, set, advanced }: PartProps) {
 
 function DivisionCard({ d, spec, advanced, onChange, onRemove }: { d: DivisionSpec; spec: EventSpec; advanced: boolean; onChange: (fn: (d: DivisionSpec) => DivisionSpec) => void; onRemove: () => void }) {
   const f = d.format;
+  const confirm = useConfirm();
   const setFormat = (patch: Partial<FormatSpec>) => onChange((x) => ({ ...x, format: { ...x.format, ...patch } }));
   const teamCount = d.teams.filter((t) => t.trim()).length;
   return (
@@ -304,7 +306,7 @@ function DivisionCard({ d, spec, advanced, onChange, onRemove }: { d: DivisionSp
         <h3>{d.name || "Untitled division"}</h3>
         <Pill>{teamCount} teams</Pill>
         <span className="spacer" />
-        <button className="btn small danger" onClick={() => { if (window.confirm(`Remove ${d.name}?`)) onRemove(); }}>Remove division</button>
+        <button className="btn small danger" onClick={async () => { if (await confirm({ title: `Remove ${d.name}?`, body: "Its teams and format are removed from this tournament.", confirmLabel: "Remove division", tone: "danger" })) onRemove(); }}>Remove division</button>
       </div>
       <div className="grid2">
         <Field label="Division name"><input type="text" value={d.name} onChange={(e) => onChange((x) => ({ ...x, name: e.target.value }))} /></Field>
@@ -400,7 +402,7 @@ function Review({ onDone }: { onDone: () => void }) {
   }, [key]);
 
   if (failure) return <Banner tone="bad" title="Could not check the configuration">{failure}</Banner>;
-  if (!prep) return <p className="muted" role="status">Checking your setup…</p>;
+  if (!prep) return <div className="stack tight" role="status"><Progress label="Checking your setup" /><p className="muted">Checking your setup…</p></div>;
 
   const errors = prep.issues.filter((i) => i.severity === "error");
   const warnings = prep.issues.filter((i) => i.severity !== "error");

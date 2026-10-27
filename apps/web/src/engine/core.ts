@@ -30,6 +30,9 @@ import {
   type TournamentConfig,
   type Violation,
 } from "@engine";
+import { inspect, kindOf, medalMatchIds, slotShort, type MatchDetail, type MatchKind } from "./inspect.js";
+
+export type { MatchDetail } from "./inspect.js";
 
 export interface PrepareResult {
   valid: boolean;
@@ -62,6 +65,11 @@ export interface InterpretCheck {
 
 export interface MatchInfo {
   id: string;
+  /** Presentation class: preliminary, other knockout, or medal (final and third place). */
+  kind: MatchKind;
+  categoryId: string;
+  /** Short description of each side: a team name or a qualification placeholder. */
+  sides: [string, string];
   divisionId: string;
   label: string;
   phase: string;
@@ -126,9 +134,19 @@ export function describe(config: TournamentConfig, instruction: SchedulingInstru
   return describeInstruction(instruction, config);
 }
 
+export function inspectMatch(config: TournamentConfig, schedule: Schedule, matchId: string): MatchDetail | null {
+  return inspect(inventoryFor(config), config, schedule, matchId);
+}
+
 export function matchInfo(config: TournamentConfig): MatchInfo[] {
-  return inventoryFor(config).matches.map((m) => ({
+  const inventory = inventoryFor(config);
+  const medals = medalMatchIds(inventory);
+  const categoryOf = new Map(config.divisions.map((d) => [d.id, d.categoryId]));
+  return inventory.matches.map((m) => ({
     id: m.id,
+    kind: kindOf(m, medals),
+    categoryId: categoryOf.get(m.divisionId) ?? "",
+    sides: [slotShort(inventory, m.slots[0]), slotShort(inventory, m.slots[1])],
     divisionId: m.divisionId,
     label: m.label,
     phase: m.phase,

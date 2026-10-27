@@ -8,9 +8,13 @@ import { downloadText, exportProjectJson, matrixToCsv, safeFilename, scheduleToC
 import { useWorkspace } from "../state/workspace.js";
 import { Banner, Field, Pill } from "../ui/kit.js";
 import { dayLabel } from "../ui/format.js";
+import { useConfirm } from "../ui/confirm.js";
+import { useMatchNames } from "./useMatchNames.js";
 
 export function Export() {
   const w = useWorkspace();
+  const confirm = useConfirm();
+  const humanize = useMatchNames();
   const project = w.project!;
   const config = w.config!;
   const working = project.working;
@@ -23,7 +27,7 @@ export function Export() {
   const [label, setLabel] = useState("");
 
   useEffect(() => {
-    void w.runner.matchInfo(config).then(setMatches);
+    void w.runner.matchInfo(config).then(setMatches).catch(() => setMatches([]));
   }, [config, w.runner]);
 
   useEffect(() => {
@@ -35,7 +39,7 @@ export function Export() {
       setReport(r.report);
       setValid(r.valid);
       setProblems([...r.violations.map((v) => v.message), ...r.instructionViolations.map((v) => v.message)]);
-    });
+    }).catch(() => live && setValid(false));
     return () => {
       live = false;
     };
@@ -69,8 +73,8 @@ export function Export() {
     setLabel("");
   };
 
-  const restore = (r: Revision) => {
-    if (!window.confirm(`Restore "${r.label}" as your working schedule? Your current working schedule will be replaced (it stays available if you saved it as a revision).`)) return;
+  const restore = async (r: Revision) => {
+    if (!(await confirm({ title: `Restore "${r.label}"?`, body: "Your current working schedule will be replaced. It stays available only if you saved it as a revision.", confirmLabel: "Restore" }))) return;
     w.update((p) => ({ ...p, status: "draft", working: { basedOn: "import", schedule: structuredClone(r.schedule), locks: [...r.locks] } }));
   };
 
@@ -86,10 +90,10 @@ export function Export() {
       <div className="card stack">
         <h2>Status</h2>
         <p className="muted">Draft is work in progress. Approved means you have reviewed this exact schedule. Published marks it as released; sending it to players or other systems is not part of this version.</p>
-        {valid === false && <Banner tone="bad" title="This schedule does not pass the rules and cannot be approved"><ul>{problems.slice(0, 8).map((p, i) => <li key={i}>{p}</li>)}</ul></Banner>}
+        {valid === false && <Banner tone="bad" title="This schedule does not pass the rules and cannot be approved"><ul>{problems.slice(0, 8).map((p, i) => <li key={i}>{humanize(p)}</li>)}</ul></Banner>}
         {valid === true && risks.length > 0 && (
           <Banner tone="warn" title="Review these risks before approving">
-            <ul>{risks.slice(0, 10).map((r, i) => <li key={i}>{r}</li>)}</ul>
+            <ul>{risks.slice(0, 10).map((r, i) => <li key={i}>{humanize(r)}</li>)}</ul>
             {project.spec.experimentalNote && <p><strong>This schedule is not suitable for live operations.</strong> Approval here only records that you reviewed it.</p>}
           </Banner>
         )}
@@ -103,7 +107,7 @@ export function Export() {
           <label className="field inline"><input type="checkbox" checked={acknowledged} onChange={(e) => setAcknowledged(e.target.checked)} /> I have read these risks and still want to approve this schedule.</label>
         )}
         <div className="row">
-          <button className="btn primary" disabled={!canApprove} onClick={approve}>Approve this schedule</button>
+          <button className="btn accent" disabled={!canApprove} onClick={approve}>Approve this schedule</button>
           <button className="btn" onClick={() => addRevision("draft", label.trim() || "Saved draft", [])}>Save as a draft revision</button>
           <button className="btn" disabled={project.status !== "approved"} onClick={() => w.update((p) => ({ ...p, status: "published" }))}>Mark as published</button>
           {project.status === "published" && <button className="btn" onClick={() => w.update((p) => ({ ...p, status: "approved" }))}>Withdraw publication</button>}

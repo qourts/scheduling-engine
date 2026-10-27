@@ -1,26 +1,31 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
 import type { Schedule, ScheduleReport, TournamentConfig } from "@engine";
 import type { MatchInfo } from "../engine/core.js";
+import type { MatchDetail } from "../engine/inspect.js";
 import { impactOf, proposeMove, proposeSwap, reasonsOf, type Impact, type Proposal } from "../domain/editing.js";
-import { clock, parseClockInput } from "../domain/spec.js";
+import { clock } from "../domain/spec.js";
 import { useWorkspace } from "../state/workspace.js";
-import { Banner, Field, Pill, Segmented } from "../ui/kit.js";
-import { dayLabel, hours } from "../ui/format.js";
+import { Icon } from "../ui/icons.js";
+import { EmptyState, Pill, Segmented } from "../ui/kit.js";
+import { dayLabel } from "../ui/format.js";
+import { Inspector, type MoveTarget } from "./Inspector.js";
+import { useMatchNames } from "./useMatchNames.js";
 
 const SNAP = 5;
-const ZOOMS = [2.2, 4, 6];
+
+/** Timeline density: pixels per minute. Card width is always proportional to the match's real duration. */
+const DENSITIES = [
+  { id: "compact", label: "Compact", scale: 4 },
+  { id: "comfortable", label: "Comfortable", scale: 5.2 },
+  { id: "detail", label: "Detailed", scale: 7.4 },
+] as const;
 
 interface Snapshot {
   schedule: Schedule;
   locks: string[];
 }
 
-interface Target {
-  matchId: string;
-  courtId: string;
-  day: string;
-  start: number;
-}
+type Target = MoveTarget & { source: "drag" | "form" };
 
 function dayAxis(config: TournamentConfig, day: string) {
   let s = 1440;
@@ -30,18 +35,20 @@ function dayAxis(config: TournamentConfig, day: string) {
   return { start: Math.floor(s / 60) * 60, end: Math.ceil(e / 60) * 60 };
 }
 
-export function Matrix({ onNext }: { onNext: () => void }) {
+export function Matrix({ onNext, onGenerate }: { onNext: () => void; onGenerate: () => void }) {
   const w = useWorkspace();
   const project = w.project!;
   const config = w.config!;
   const working = project.working;
   const rules = useMemo(() => project.rules.map((r) => r.instruction), [project.rules]);
+  const humanize = useMatchNames();
 
   const [matches, setMatches] = useState<MatchInfo[]>([]);
   const [day, setDay] = useState(config.days[0]!);
-  const [zoom, setZoom] = useState(1);
+  const [density, setDensity] = useState(1);
   const [selected, setSelected] = useState<string | null>(null);
-  const [target, setTarget] = useState<(Target & { source: "drag" | "form" }) | null>(null);
+  const [detail, setDetail] = useState<MatchDetail | null>(null);
+  const [target, setTarget] = useState<Target | null>(null);
   const [swapWith, setSwapWith] = useState<string>("");
   const [preview, setPreview] = useState<{ proposal: Proposal; impact: Impact | null } | null>(null);
   const [rejection, setRejection] = useState<string[] | null>(null);
@@ -53,16 +60,14 @@ export function Matrix({ onNext }: { onNext: () => void }) {
   const future = useRef<Snapshot[]>([]);
   const evalToken = useRef(0);
   const grabOffset = useRef(0);
+  const scroller = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    void w.runner.matchInfo(config).then(setMatches);
+    void w.runner.matchInfo(config).then(setMatches).catch(() => setMatches([]));
   }, [config, w.runner]);
 
   const info = useMemo(() => new Map(matches.map((m) => [m.id, m])), [matches]);
-  const hue = useMemo(() => {
-    const ids = config.divisions.map((d) => d.id);
-    return new Map(ids.map((id, i) => [id, Math.round((i * 360) / Math.max(1, ids.length) + 15) % 360]));
-  }, [config]);
+  const categoryIndex = useMemo(() => new Map(config.categories.map((c, i) => [c.id, i])), [config]);
 
   const schedule = working?.schedule ?? null;
   const locks = useMemo(() => working?.locks ?? [], [working?.locks]);
@@ -76,11 +81,21 @@ export function Matrix({ onNext }: { onNext: () => void }) {
       if (!live) return;
       setBaseReport(r.report);
       setBaseValid(r.valid);
-    });
+    }).catch(() => live && setBaseValid(false));
     return () => {
       live = false;
     };
   }, [schedule, rules, lockedAssignments, config, w.runner]);
+
+  // Full information for the selected match lives in the inspector; the matrix itself stays concise.
+  useEffect(() => {
+    if (!selected || !schedule) return void setDetail(null);
+    let live = true;
+    void w.runner.inspectMatch(config, schedule, selected).then((d) => live && setDetail(d)).catch(() => live && setDetail(null));
+    return () => {
+      live = false;
+    };
+  }, [selected, schedule, config, w.runner]);
 
   const commit = useCallback(
     (nextSchedule: Schedule, nextLocks: string[]) => {
@@ -113,7 +128,7 @@ export function Matrix({ onNext }: { onNext: () => void }) {
   };
 
   const evaluate = useCallback(
-    async (t: Target): Promise<{ proposal: Proposal; impact: Impact | null }> => {
+    async (t: MoveTarget): Promise<{ proposal: Proposal; impact: Impact | null }> => {
       const proposal = await proposeMove(w.runner, config, schedule!, rules, locks, t.matchId, { courtId: t.courtId, day: t.day, start: t.start });
       return { proposal, impact: proposal.report && baseReport ? impactOf(baseReport, proposal.report, schedule!, proposal.candidate) : null };
     },
@@ -151,18 +166,21 @@ export function Matrix({ onNext }: { onNext: () => void }) {
     return (
       <div className="stack">
         <h1>Schedule</h1>
-        <Banner tone="info" title="No schedule chosen yet">Generate and compare schedules first, then pick the one to refine.</Banner>
+        <EmptyState icon="grid" title="No schedule chosen yet" action={<button className="btn primary" onClick={onGenerate}>Go to Generate & compare</button>}>
+          Generate the three schedule options, compare them, and pick the one to refine. It will appear here as a court-by-court timeline.
+        </EmptyState>
       </div>
     );
   }
 
   const selectedAssignment = selected ? schedule.assignments.find((a) => a.matchId === selected) ?? null : null;
-  const selectedInfo = selected ? info.get(selected) : undefined;
   const isLocked = (id: string) => locks.includes(id);
   const axis = dayAxis(config, day);
-  const scale = ZOOMS[zoom]!;
+  const scale = DENSITIES[density]!.scale;
   const width = (axis.end - axis.start) * scale;
   const hits = new Set(preview ? preview.proposal.violations.flatMap((v) => v.matchIds) : []);
+  const selectedWarnings = selected && baseReport ? baseReport.warnings.filter((x) => x.matchIds?.includes(selected)).map((x) => x.message) : [];
+  const riskCount = baseReport ? baseReport.warnings.filter((x) => x.severity === "risk").length : 0;
 
   const select = (id: string) => {
     const a = schedule.assignments.find((x) => x.matchId === id);
@@ -172,6 +190,14 @@ export function Matrix({ onNext }: { onNext: () => void }) {
     setRejection(null);
     setTarget(a ? { matchId: id, courtId: a.courtId, day: a.day, start: a.start, source: "form" } : null);
     if (a) setDay(a.day);
+  };
+
+  const closeInspector = () => {
+    setSelected(null);
+    setTarget(null);
+    setPreview(null);
+    setSwapWith("");
+    setRejection(null);
   };
 
   const applyPreview = (p: Proposal) => {
@@ -251,40 +277,61 @@ export function Matrix({ onNext }: { onNext: () => void }) {
     setTarget({ ...target, courtId: court.id, start: Math.max(0, target.start + dm), source: "form" });
   };
 
+  const scrollBy = (dir: -1 | 1) => scroller.current?.scrollBy({ left: dir * Math.round((scroller.current.clientWidth - 140) * 0.7), behavior: "smooth" });
+  const jumpToSelected = () => scroller.current?.querySelector(`[data-match="${CSS.escape(selected ?? "")}"]`)?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+
+  const swapOptions = schedule.assignments
+    .filter((a) => a.matchId !== selected && !isLocked(a.matchId))
+    .sort((a, b) => a.day.localeCompare(b.day) || a.start - b.start)
+    .map((a) => {
+      const m = info.get(a.matchId);
+      return { id: a.matchId, label: `${m?.divisionId ?? ""} ${m?.label ?? a.matchId} · ${clock(a.start)} · ${config.courts.find((c) => c.id === a.courtId)?.name ?? ""}` };
+    });
+
   return (
     <div className="stack">
-      <div className="row">
+      <div className="page-head">
         <h1>Schedule</h1>
-        {baseValid === true && <Pill tone="ok">Verified valid by the engine</Pill>}
-        {baseValid === false && <Pill tone="bad">Does not pass the rules</Pill>}
+        {baseValid === true && <Pill tone="ok"><Icon name="check" size={12} />Verified by the engine</Pill>}
+        {baseValid === false && <Pill tone="bad"><Icon name="alert" size={12} />Does not pass the rules</Pill>}
         <Pill>{schedule.assignments.length} matches</Pill>
-        {locks.length > 0 && <Pill tone="info">{locks.length} locked</Pill>}
+        {locks.length > 0 && <Pill tone="info"><Icon name="lock" size={12} />{locks.length} locked</Pill>}
+        {riskCount > 0 && <Pill tone="warn"><Icon name="alert" size={12} />{riskCount} risk warning{riskCount === 1 ? "" : "s"}</Pill>}
         <span className="spacer" />
-        <button className="btn small" onClick={undo} disabled={past.current.length === 0} aria-keyshortcuts="Control+Z">Undo</button>
-        <button className="btn small" onClick={redo} disabled={future.current.length === 0}>Redo</button>
-        <button className="btn primary" onClick={onNext}>Approve & export</button>
+        <button className="btn small" onClick={undo} disabled={past.current.length === 0} aria-keyshortcuts="Control+Z"><Icon name="undo" size={15} />Undo</button>
+        <button className="btn small" onClick={redo} disabled={future.current.length === 0}><Icon name="redo" size={15} />Redo</button>
+        <button className="btn accent" onClick={onNext}>Approve & export</button>
       </div>
       <span className="sr-only" aria-live="polite">{rejection ? `Move rejected. ${rejection[0] ?? ""}` : ""}{version > 0 ? `Change ${version} applied.` : ""}</span>
 
-      <div className="row">
+      <div className="mx-toolbar">
         {config.days.length > 1 ? (
           <Segmented label="Day" value={day} onChange={setDay} options={config.days.map((d) => ({ value: d, label: dayLabel(d) }))} />
         ) : (
-          <Pill>{dayLabel(config.days[0]!)}</Pill>
+          <Pill><Icon name="calendar" size={12} />{dayLabel(config.days[0]!)}</Pill>
         )}
-        <Segmented label="Zoom" value={String(zoom)} onChange={(v) => setZoom(Number(v))} options={[{ value: "0", label: "Overview" }, { value: "1", label: "Normal" }, { value: "2", label: "Detail" }]} />
-        <span className="faint">Drag a match to a new court or time, drop it on another match to swap, or select it and use the panel.</span>
+        <Segmented label="Timeline density" value={String(density)} onChange={(v) => setDensity(Number(v))} options={DENSITIES.map((d, i) => ({ value: String(i), label: d.label }))} />
+        <div className="row" style={{ gap: 4 }} role="group" aria-label="Timeline navigation">
+          <button className="btn small icon" aria-label="Scroll timeline earlier" onClick={() => scrollBy(-1)}><Icon name="left" size={16} /></button>
+          <button className="btn small icon" aria-label="Scroll timeline later" onClick={() => scrollBy(1)}><Icon name="right" size={16} /></button>
+          <button className="btn small" disabled={!selected} onClick={jumpToSelected}><Icon name="locate" size={15} />Jump to selected</button>
+        </div>
+        <span className="faint">Drag a match to move it, drop on another to swap, or select it to edit.</span>
       </div>
 
-      <div className="layout">
-        <div className="stack">
-          <div className="matrix-scroll" role="region" aria-label="Court matrix" tabIndex={0}>
-            <div className="matrix" style={{ width: width + 96 }}>
-              <div className="m-axis" style={{ paddingLeft: 96 }}>
-                <div style={{ position: "relative", width }}>
-                  {Array.from({ length: (axis.end - axis.start) / 60 + 1 }, (_, i) => (
-                    <span key={i} className="tick" style={{ left: i * 60 * scale }}>{clock(axis.start + i * 60)}</span>
-                  ))}
+      <div className={`mx-layout${selected ? "" : " no-sel"}`}>
+        <div className="mx-main">
+          <div className="mx-scroll" ref={scroller} role="region" aria-label="Court matrix" tabIndex={0}>
+            <div className="mx" data-density={DENSITIES[density]!.id} style={{ width: width + 132 }}>
+              <div className="mx-head">
+                <div className="mx-corner"><span className="eyebrow">Court</span></div>
+                <div className="mx-time" style={{ width }}>
+                  {Array.from({ length: (axis.end - axis.start) / 30 + 1 }, (_, i) => {
+                    const minute = axis.start + i * 30;
+                    const half = i % 2 === 1;
+                    if (half && scale < 5) return null;
+                    return <span key={i} className={`mx-tick${half ? " half" : ""}`} style={{ left: i * 30 * scale }}>{clock(minute)}</span>;
+                  })}
                 </div>
               </div>
               {config.courts.map((court) => {
@@ -299,46 +346,56 @@ export function Matrix({ onNext }: { onNext: () => void }) {
                 const here = schedule.assignments.filter((a) => a.courtId === court.id && a.day === day);
                 const isTarget = dragId !== null && target?.courtId === court.id && target.day === day;
                 return (
-                  <div className="m-row" key={court.id}>
-                    <div className="m-label">{court.name}</div>
+                  <div className="mx-row" key={court.id}>
+                    <div className="mx-court"><b>{court.name}</b><span>{here.length} match{here.length === 1 ? "" : "es"}</span></div>
                     <div
-                      className={`m-track${isTarget && preview ? (preview.proposal.valid ? " drop-ok" : " drop-bad") : ""}`}
-                      style={{ width, backgroundSize: `${60 * scale}px 100%` }}
+                      className={`mx-track${isTarget && preview ? (preview.proposal.valid ? " drop-ok" : " drop-bad") : ""}`}
+                      style={{ width, backgroundSize: `${60 * scale}px 100%, ${30 * scale}px 100%` }}
                       onDragOver={(e) => onTrackOver(e, court.id)}
                       onDrop={(e) => void onTrackDrop(e, court.id)}
                     >
-                      {closed.map((c, i) => <div key={i} className="m-closed" style={{ left: (c.from - axis.start) * scale, width: (c.to - c.from) * scale }} title="Court closed" />)}
+                      {closed.map((c, i) => <div key={i} className="mx-closed" style={{ left: (c.from - axis.start) * scale, width: (c.to - c.from) * scale }} title="Court closed" />)}
                       {here.map((a) => {
                         const m = info.get(a.matchId);
                         const dur = m?.durationMinutes ?? 20;
-                        const medal = m?.thirdPlace || m?.roundLabel === "Final" || /^(F|3P)$/.test(m?.label ?? "");
-                        const provisional = m?.phase === "knockout";
-                        const cls = ["m-block", medal ? "medal" : "", provisional ? "provisional" : "", selected === a.matchId ? "sel" : "", isLocked(a.matchId) ? "locked" : "", dragId === a.matchId ? "dragging" : "", hits.has(a.matchId) ? "hit" : ""].join(" ");
+                        const kind = m?.kind ?? "prelim";
+                        const locked = isLocked(a.matchId);
+                        const cls = ["mx-card", m?.phase === "knockout" ? "provisional" : "", selected === a.matchId ? "sel" : "", locked ? "locked" : "", dragId === a.matchId ? "dragging" : "", hits.has(a.matchId) ? "hit" : ""].filter(Boolean).join(" ");
+                        const catVar = `var(--mx-cat-${((categoryIndex.get(m?.categoryId ?? "") ?? 0) % 4) + 1})`;
                         return (
                           <div
                             key={a.matchId}
                             role="button"
                             tabIndex={0}
-                            draggable={!isLocked(a.matchId)}
+                            data-match={a.matchId}
+                            data-kind={kind}
+                            draggable={!locked}
                             className={cls}
-                            style={{ left: (a.start - axis.start) * scale, width: dur * scale - 2, "--h": hue.get(m?.divisionId ?? "") ?? 200 } as CSSProperties}
-                            aria-label={`${m?.divisionId ?? ""} ${m?.label ?? a.matchId}, ${court.name}, ${clock(a.start)}${isLocked(a.matchId) ? ", locked" : ""}`}
+                            style={{ left: (a.start - axis.start) * scale, width: dur * scale - 3, "--cat": catVar } as CSSProperties}
+                            aria-label={`${m?.divisionId ?? ""} ${m?.label ?? a.matchId}, ${kind === "medal" ? "medal match, " : kind === "semi" ? "knockout match, " : ""}${court.name}, ${clock(a.start)}${locked ? ", locked" : ""}${hits.has(a.matchId) ? ", conflict" : ""}`}
                             aria-pressed={selected === a.matchId}
                             title={`${m?.divisionId ?? ""} ${m?.roundLabel ?? ""} ${m?.label ?? ""}\n${clock(a.start)}-${clock(a.start + dur)}`}
                             onClick={() => select(a.matchId)}
                             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(a.matchId); } }}
                             onDragStart={(e) => onDragStart(e, a.matchId)}
-                            onDragEnd={() => { setDragId(null); }}
+                            onDragEnd={() => setDragId(null)}
                             onDragOver={(e) => { if (dragId && dragId !== a.matchId) e.preventDefault(); }}
                             onDrop={(e) => void onBlockDrop(e, a.matchId)}
                           >
-                            <b>{isLocked(a.matchId) ? "🔒 " : ""}{m?.divisionId}</b>
-                            {m?.label} · {clock(a.start)}
+                            <span className="mx-top"><i className="mx-dot" /><span className="mx-div">{m?.divisionId}</span></span>
+                            <b className="mx-label">{m?.label}</b>
+                            <span className="mx-clock">{clock(a.start)}–{clock(a.start + dur)}</span>
+                            <span className="mx-teams">{m ? `${m.sides[0]} vs ${m.sides[1]}` : ""}</span>
+                            <span className="mx-badges">
+                              {hits.has(a.matchId) && <Icon name="alert" size={13} />}
+                              {kind === "medal" && <Icon name="star" size={13} />}
+                              {locked && <Icon name="lock" size={13} />}
+                            </span>
                           </div>
                         );
                       })}
                       {ghost && ghost.courtId === court.id && (
-                        <div className={`m-ghost${preview && !preview.proposal.valid ? " bad" : ""}`} style={{ left: (ghost.start - axis.start) * scale, width: (ghostInfo?.durationMinutes ?? 20) * scale - 2 }} />
+                        <div className={`mx-ghost${preview && !preview.proposal.valid ? " bad" : ""}`} style={{ left: (ghost.start - axis.start) * scale, width: (ghostInfo?.durationMinutes ?? 20) * scale - 3 }} />
                       )}
                     </div>
                   </div>
@@ -346,111 +403,48 @@ export function Matrix({ onNext }: { onNext: () => void }) {
               })}
             </div>
           </div>
-          <div className="legend" aria-label="Divisions">
-            {config.divisions.map((d) => (
-              <span key={d.id} className="sw" style={{ "--h": hue.get(d.id) } as CSSProperties}><i />{d.name}</span>
-            ))}
+          <div className="mx-legend" aria-label="Legend">
+            <span className="sw"><i className="mx-key" />Preliminary</span>
+            <span className="sw"><i className="mx-key" data-kind="semi" />Semifinal or knockout</span>
+            <span className="sw"><i className="mx-key" data-kind="medal" />Medal match</span>
+            <span className="sw"><i className="mx-key dashed" />Players decided by results</span>
+            <span className="sw"><i className="mx-key lock" />Locked</span>
+            <span className="sw"><Icon name="alert" size={13} />Conflict if moved here</span>
           </div>
-          <p className="faint">Dashed outline: playoff match whose players are not known yet, checked against every team that could reach it. Star: medal match. Hatched: court closed.</p>
         </div>
 
-        <aside className="side" aria-label="Match details">
-          <div className="card stack" aria-live="polite">
-            {!selected || !selectedAssignment ? (
-              <p className="muted">Select a match to see its details, move it with the controls, swap it, or lock it.</p>
-            ) : (
-              <>
-                <div className="row">
-                  <h3>{selectedInfo?.divisionId} {selectedInfo?.label}</h3>
-                  {isLocked(selected) && <Pill tone="info">Locked</Pill>}
-                </div>
-                <p className="muted">{selectedInfo?.roundLabel} · {selectedInfo?.durationMinutes} min · {config.courts.find((c) => c.id === selectedAssignment.courtId)?.name} · {dayLabel(selectedAssignment.day)} {clock(selectedAssignment.start)}</p>
-                <button className="btn small" onClick={() => toggleLock(selected)}>{isLocked(selected) ? "Unlock match" : "Lock this match in place"}</button>
-
-                {!isLocked(selected) && target && (
-                  <>
-                    <h3>Move to</h3>
-                    <div className="row">
-                      <Field label="Court">
-                        <select value={target.courtId} onChange={(e) => { setSwapWith(""); setTarget({ ...target, courtId: e.target.value, source: "form" }); }}>
-                          {config.courts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                      </Field>
-                      {config.days.length > 1 && (
-                        <Field label="Day">
-                          <select value={target.day} onChange={(e) => { setSwapWith(""); setTarget({ ...target, day: e.target.value, source: "form" }); setDay(e.target.value); }}>
-                            {config.days.map((d) => <option key={d} value={d}>{dayLabel(d)}</option>)}
-                          </select>
-                        </Field>
-                      )}
-                      <Field label="Start">
-                        <input type="time" step={SNAP * 60} value={clock(Math.min(1439, target.start))} onChange={(e) => { const m = parseClockInput(e.target.value); if (m !== null) { setSwapWith(""); setTarget({ ...target, start: m, source: "form" }); } }} />
-                      </Field>
-                    </div>
-                    <div className="row" aria-label="Nudge">
-                      <button className="btn small" aria-label="Earlier by 5 minutes" onClick={() => nudge(0, -SNAP)}>◀ 5 min</button>
-                      <button className="btn small" aria-label="Later by 5 minutes" onClick={() => nudge(0, SNAP)}>5 min ▶</button>
-                      <button className="btn small" aria-label="Court above" onClick={() => nudge(-1, 0)}>▲ court</button>
-                      <button className="btn small" aria-label="Court below" onClick={() => nudge(1, 0)}>▼ court</button>
-                    </div>
-                    <Field label="Or swap with">
-                      <select value={swapWith} onChange={(e) => setSwapWith(e.target.value)}>
-                        <option value="">Choose a match…</option>
-                        {schedule.assignments.filter((a) => a.matchId !== selected && !isLocked(a.matchId)).sort((a, b) => a.day.localeCompare(b.day) || a.start - b.start).map((a) => {
-                          const m = info.get(a.matchId);
-                          return <option key={a.matchId} value={a.matchId}>{m?.divisionId} {m?.label} · {clock(a.start)} · {config.courts.find((c) => c.id === a.courtId)?.name}</option>;
-                        })}
-                      </select>
-                    </Field>
-                  </>
-                )}
-              </>
-            )}
+        {selected ? (
+          <Inspector
+            config={config}
+            detail={detail}
+            assignment={selectedAssignment}
+            locked={isLocked(selected)}
+            target={target}
+            swapWith={swapWith}
+            swapOptions={swapOptions}
+            warnings={selectedWarnings.map(humanize)}
+            humanize={humanize}
+            preview={preview}
+            rejection={rejection}
+            onClose={closeInspector}
+            onToggleLock={() => toggleLock(selected)}
+            onTarget={(patch) => { setSwapWith(""); if (target) setTarget({ ...target, ...patch, source: "form" }); if (patch.day) setDay(patch.day); }}
+            onNudge={nudge}
+            onSwapWith={setSwapWith}
+            onApply={applyPreview}
+            onCancelPreview={() => { setPreview(null); setSwapWith(""); if (selectedAssignment) setTarget({ matchId: selected, courtId: selectedAssignment.courtId, day: selectedAssignment.day, start: selectedAssignment.start, source: "form" }); }}
+            onSelectMatch={select}
+          />
+        ) : (
+          <div className="card ins-empty-card">
+            <div className="ins-empty">
+              <span className="empty-icon" style={{ display: "grid", placeItems: "center", width: 48, height: 48, borderRadius: 14, background: "var(--accent-soft)", color: "var(--accent)" }}><Icon name="grid" size={22} /></span>
+              <h3>Match details</h3>
+              <p className="muted">Select a match to see its teams, sequence, recovery and warnings, and to move, swap or lock it.</p>
+              {rejection && <p className="badtxt">{rejection[0]}</p>}
+            </div>
           </div>
-
-          {preview && <PreviewCard preview={preview} onApply={() => applyPreview(preview.proposal)} onCancel={() => { setPreview(null); setSwapWith(""); if (selectedAssignment) setTarget({ matchId: selected!, courtId: selectedAssignment.courtId, day: selectedAssignment.day, start: selectedAssignment.start, source: "form" }); }} />}
-          {rejection && !preview && (
-            <Banner tone="bad" title="That change was not made">
-              <ul>{rejection.slice(0, 6).map((r, i) => <li key={i}>{r}</li>)}</ul>
-            </Banner>
-          )}
-        </aside>
-      </div>
-    </div>
-  );
-}
-
-function PreviewCard({ preview, onApply, onCancel }: { preview: { proposal: Proposal; impact: Impact | null }; onApply: () => void; onCancel: () => void }) {
-  const { proposal, impact } = preview;
-  const reasons = reasonsOf(proposal);
-  const delta = (before: number | null, after: number | null, lowerBetter = true) => {
-    if (before === null || after === null || before === after) return <span>{after ?? "-"}</span>;
-    const good = lowerBetter ? after < before : after > before;
-    return <span className={good ? "good" : "badtxt"}>{before} → {after}</span>;
-  };
-  return (
-    <div className="card stack" aria-live="polite">
-      <div className="row">
-        <h3>{proposal.kind === "swap" ? "Swap preview" : "Move preview"}</h3>
-        <Pill tone={proposal.valid ? "ok" : "bad"}>{proposal.valid ? "Allowed" : "Not allowed"}</Pill>
-      </div>
-      {!proposal.valid && <ul style={{ margin: 0, paddingLeft: 18 }}>{reasons.slice(0, 6).map((r, i) => <li key={i}>{r}</li>)}</ul>}
-      {proposal.valid && impact && (
-        <table aria-label="Impact of this change">
-          <tbody>
-            <tr><td>Matches moved</td><td className="num">{impact.matchesMoved}</td></tr>
-            <tr><td>Event finish</td><td className="num">{impact.finishMinute.before === impact.finishMinute.after ? "No change" : `${hours(Math.abs((impact.finishMinute.after ?? 0) - (impact.finishMinute.before ?? 0)))} ${((impact.finishMinute.after ?? 0) > (impact.finishMinute.before ?? 0)) ? "later" : "earlier"}`}</td></tr>
-            <tr><td>Idle court time</td><td className="num">{delta(impact.idleCourtMinutes.before, impact.idleCourtMinutes.after)}</td></tr>
-            <tr><td>Back-to-backs</td><td className="num">{delta(impact.backToBacks.before, impact.backToBacks.after)}</td></tr>
-            <tr><td>Shortest recovery</td><td className="num">{delta(impact.shortestRecovery.before, impact.shortestRecovery.after, false)}</td></tr>
-          </tbody>
-        </table>
-      )}
-      {proposal.valid && impact && impact.newWarnings.length > 0 && <Banner tone="warn" title="New warnings"><ul>{impact.newWarnings.slice(0, 5).map((m, i) => <li key={i}>{m}</li>)}</ul></Banner>}
-      {proposal.valid && impact && impact.resolvedWarnings.length > 0 && <Banner tone="ok" title="Warnings resolved"><ul>{impact.resolvedWarnings.slice(0, 5).map((m, i) => <li key={i}>{m}</li>)}</ul></Banner>}
-      <div className="row">
-        <button className="btn primary" disabled={!proposal.valid} onClick={onApply}>{proposal.valid ? "Apply change" : "Cannot apply"}</button>
-        <button className="btn" onClick={onCancel}>Cancel</button>
+        )}
       </div>
     </div>
   );

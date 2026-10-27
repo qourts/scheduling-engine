@@ -3,16 +3,18 @@ import type { FailureReport, ScheduleReport, StrategyId } from "@engine";
 import { inputsKey, type Generation } from "../domain/project.js";
 import { lockRules, lockedAssignments, lockedMatchesInIssues } from "../domain/locks.js";
 import { plainRuleIds } from "../domain/editing.js";
+import { useConfirm } from "../ui/confirm.js";
+import { useMatchNames } from "./useMatchNames.js";
 import { useWorkspace } from "../state/workspace.js";
-import { Banner, Pill, Segmented, Stat } from "../ui/kit.js";
-import { hours } from "../ui/format.js";
+import { Banner, EmptyState, Pill, Progress, Segmented, Stat } from "../ui/kit.js";
+import { hours, shortMoment } from "../ui/format.js";
 
 const BUDGET_MS = (matches: number) => (matches > 300 ? 24000 : 8000);
 
 type Row = { label: string; value: (r: ScheduleReport) => number | null; text?: (r: ScheduleReport) => string; better: "lower" | "higher" | "none" };
 
 const ROWS: Row[] = [
-  { label: "Finishes", value: (r) => r.finish?.absolute ?? null, text: (r) => r.finish?.label ?? "-", better: "lower" },
+  { label: "Finishes", value: (r) => r.finish?.absolute ?? null, text: (r) => shortMoment(r.finish?.label ?? "-"), better: "lower" },
   { label: "Time on court days", value: (r) => r.playingDayMinutes, text: (r) => hours(r.playingDayMinutes), better: "lower" },
   { label: "Idle court time", value: (r) => r.idleCourtMinutes, text: (r) => `${r.idleCourtMinutes} court-min`, better: "lower" },
   { label: "Court utilisation", value: (r) => (r.courts.length ? r.courts.reduce((n, c) => n + c.busyMinutes, 0) / Math.max(1, r.courts.reduce((n, c) => n + c.availableMinutes, 0)) : null), text: (r) => `${Math.round((r.courts.reduce((n, c) => n + c.busyMinutes, 0) / Math.max(1, r.courts.reduce((n, c) => n + c.availableMinutes, 0))) * 100)}%`, better: "higher" },
@@ -36,6 +38,8 @@ interface LockConflict {
 
 export function Compare({ onPicked, onReviseLocks }: { onPicked: () => void; onReviseLocks: () => void }) {
   const w = useWorkspace();
+  const confirm = useConfirm();
+  const humanize = useMatchNames();
   const project = w.project!;
   const config = w.config!;
   const gen = project.generation;
@@ -151,7 +155,7 @@ export function Compare({ onPicked, onReviseLocks }: { onPicked: () => void; onR
     }
   };
 
-  const pick = (strategy: StrategyId) => {
+  const pick = async (strategy: StrategyId) => {
     const option = gen?.options.find((o) => o.strategy === strategy);
     if (!option) return;
     const locks = project.working?.locks ?? [];
@@ -159,7 +163,7 @@ export function Compare({ onPicked, onReviseLocks }: { onPicked: () => void; onR
     const moved = lockedNow.filter((l) => !option.schedule.assignments.some((a) => a.matchId === l.matchId && a.courtId === l.courtId && a.day === l.day && a.start === l.start));
     if (moved.length > 0) return setFailure({ title: "This option does not keep your locks", text: "Generate again so the locked matches are respected.", lines: moved.map((l) => l.matchId) });
     const note = locks.length > 0 ? ` Your ${locks.length} lock${locks.length === 1 ? "" : "s"} stay in place.` : "";
-    if (project.working && !window.confirm(`This replaces your current working schedule and its manual edits. Earlier approved revisions are kept.${note} Continue?`)) return;
+    if (project.working && !(await confirm({ title: "Replace your working schedule?", body: `This replaces your current working schedule and its manual edits. Earlier approved revisions are kept.${note}`, confirmLabel: "Use this schedule" }))) return;
     w.update((p) => ({ ...p, status: "draft", approvedRevisionId: null, working: { basedOn: strategy, schedule: structuredClone(option.schedule), locks: [...locks] } }));
     onPicked();
   };
@@ -180,7 +184,7 @@ export function Compare({ onPicked, onReviseLocks }: { onPicked: () => void; onR
       {stale && <Banner tone="warn" title="These schedules are out of date">The setup or rules changed after they were generated. Generate again before you rely on them.</Banner>}
 
       <div className="card row">
-        <button className="btn primary" disabled={running} onClick={() => void run()}>
+        <button className={`btn ${gen ? "primary" : "accent"}`} disabled={running} onClick={() => void run()}>
           {gen ? "Generate again" : "Generate three schedules"}
         </button>
         {running && <span role="status" className="muted">Working in the background… {elapsed}s. Very large events can take up to about 30 seconds.</span>}
@@ -189,6 +193,11 @@ export function Compare({ onPicked, onReviseLocks }: { onPicked: () => void; onR
           {lockCount > 0 ? `, and ${lockCount} locked match${lockCount === 1 ? "" : "es"} kept in place.` : "."}
         </span>
       </div>
+
+      {running && <Progress label="Generating schedules" />}
+      {!gen && !running && !failure && !lockConflict && !error && (
+        <EmptyState icon="grid" title="No schedules yet">Generate three distinct schedules from your setup and rules. You will compare them side by side before choosing one to refine.</EmptyState>
+      )}
 
       {lockConflict && (
         <Banner tone="bad" title={lockConflict.title}>
@@ -199,12 +208,12 @@ export function Compare({ onPicked, onReviseLocks }: { onPicked: () => void; onR
             {lockConflict.implicated.length > 0 && lockConflict.implicated.length < lockCount && (
               <button
                 className="btn danger"
-                onClick={() => { if (window.confirm(`Release ${lockConflict.implicated.length} lock${lockConflict.implicated.length === 1 ? "" : "s"} (${lockConflict.names.join(", ")}) and generate? Those matches may be placed elsewhere.`)) void run(lockConflict.implicated); }}
+                onClick={async () => { if (await confirm({ title: `Release ${lockConflict.implicated.length} lock${lockConflict.implicated.length === 1 ? "" : "s"} and generate?`, body: `${lockConflict.names.join(", ")} may be placed elsewhere.`, confirmLabel: "Release and generate", tone: "danger" })) void run(lockConflict.implicated); }}
               >
                 Release the {lockConflict.implicated.length} conflicting lock{lockConflict.implicated.length === 1 ? "" : "s"} and generate
               </button>
             )}
-            <button className="btn danger" onClick={() => { if (window.confirm(`Release all ${lockCount} lock${lockCount === 1 ? "" : "s"} and generate? Every match may be placed elsewhere.`)) void run("all"); }}>
+            <button className="btn danger" onClick={async () => { if (await confirm({ title: `Release all ${lockCount} lock${lockCount === 1 ? "" : "s"} and generate?`, body: "Every match may be placed elsewhere.", confirmLabel: "Release all and generate", tone: "danger" })) void run("all"); }}>
               Release all {lockCount} lock{lockCount === 1 ? "" : "s"} and generate
             </button>
             <button className="btn" onClick={() => setLockConflict(null)}>Keep everything as it is</button>
@@ -230,12 +239,12 @@ export function Compare({ onPicked, onReviseLocks }: { onPicked: () => void; onR
                 const r = reports[o.strategy];
                 const risks = r?.warnings.filter((x) => x.severity === "risk").length ?? 0;
                 return (
-                  <section key={o.strategy} className={`card stack${o.strategy === gen.recommended ? " selected" : ""}`} aria-label={o.name}>
-                    <div className="row"><h2>{o.name}</h2>{o.strategy === gen.recommended && <Pill tone="ok">Recommended</Pill>}</div>
+                  <section key={o.strategy} className={`card opt-card${o.strategy === gen.recommended ? " recommended" : ""}`} aria-label={o.name}>
+                    <div className="opt-head"><h2>{o.name}</h2>{o.strategy === gen.recommended && <Pill tone="ok">Recommended</Pill>}</div>
                     <p className="muted">{o.summary}</p>
                     {r ? (
-                      <div className="row" style={{ gap: 24 }}>
-                        <Stat value={r.finish?.label ?? "-"} label="finishes" />
+                      <div className="opt-metrics">
+                        <Stat value={shortMoment(r.finish?.label ?? "-")} label="finishes" />
                         <Stat value={r.recovery.backToBackOccurrences} label="back-to-backs" />
                         <Stat value={r.recovery.minMinutes === null ? "-" : `${r.recovery.minMinutes}m`} label="shortest recovery" />
                       </div>
@@ -247,7 +256,7 @@ export function Compare({ onPicked, onReviseLocks }: { onPicked: () => void; onR
               })}
             </div>
           ) : (
-            <Detailed gen={gen} reports={reports} stale={stale} onPick={pick} />
+            <Detailed gen={gen} reports={reports} stale={stale} onPick={pick} humanize={humanize} />
           )}
         </>
       )}
@@ -268,7 +277,7 @@ function describeFailure(f: FailureReport): { title: string; text: string; lines
   return { title: titles[f.kind], text: f.statement, lines };
 }
 
-function Detailed({ gen, reports, stale, onPick }: { gen: Generation; reports: Partial<Record<StrategyId, ScheduleReport>>; stale: boolean; onPick: (s: StrategyId) => void }) {
+function Detailed({ gen, reports, stale, onPick, humanize }: { gen: Generation; reports: Partial<Record<StrategyId, ScheduleReport>>; stale: boolean; onPick: (s: StrategyId) => void; humanize: (t: string) => string }) {
   return (
     <div className="stack">
       <div className="card" style={{ overflowX: "auto" }}>
@@ -306,7 +315,7 @@ function Detailed({ gen, reports, stale, onPick }: { gen: Generation; reports: P
               <h3>{o.name}: warnings</h3>
               {!r ? <p className="faint">Measuring…</p> : r.warnings.length === 0 ? <p className="good">Nothing to flag.</p> : (
                 <ul style={{ paddingLeft: 18, margin: 0 }}>
-                  {r.warnings.map((x, i) => <li key={i}><Pill tone={x.severity === "risk" ? "warn" : undefined}>{x.severity}</Pill> {x.message}</li>)}
+                  {r.warnings.map((x, i) => <li key={i}><Pill tone={x.severity === "risk" ? "warn" : undefined}>{x.severity}</Pill> {humanize(x.message)}</li>)}
                 </ul>
               )}
               <div><button className="btn primary" disabled={stale} onClick={() => onPick(o.strategy)}>Use this schedule</button></div>

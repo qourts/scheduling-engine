@@ -1,15 +1,41 @@
 import type { ReactNode } from "react";
+import { Icon, type IconName } from "./icons.js";
 
 export type Tone = "ok" | "warn" | "bad" | "info";
+
+const TONE_ICON: Record<Tone, IconName> = { ok: "check", warn: "alert", bad: "alert", info: "info" };
 
 export function Banner({ tone, title, children }: { tone: Tone; title?: string; children?: ReactNode }) {
   return (
     <div className={`banner ${tone}`} role={tone === "bad" ? "alert" : "status"}>
+      <span className="banner-icon"><Icon name={TONE_ICON[tone]} /></span>
       {title && <strong>{title}</strong>}
       {children}
     </div>
   );
 }
+
+/** Friendly placeholder for a screen or section that has nothing to show yet, with the next step. */
+export function EmptyState({ icon, title, children, action }: { icon: IconName; title: string; children?: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="empty">
+      <span className="empty-icon"><Icon name={icon} size={24} /></span>
+      <h3>{title}</h3>
+      {children && <p className="muted">{children}</p>}
+      {action}
+    </div>
+  );
+}
+
+/** Indeterminate brand-gradient progress bar for work in the background. */
+export const Progress = ({ label }: { label: string }) => <div className="progress" role="progressbar" aria-label={label} aria-busy="true" />;
+
+/**
+ * The official Qourts logo, unmodified, on a light plate. The artwork is transparent with a dark-grey tagline meant for light
+ * backgrounds, so it sits on a plate inside the navy shell rather than being recoloured or cropped.
+ */
+export const LOGO_SRC = "/brand/qourts-official-logo.webp";
+export const LOGO_ALT = "Qourts: Smart Queues, Better Games.";
 
 export const Pill = ({ tone, children }: { tone?: Tone | undefined; children: ReactNode }) => <span className={`pill ${tone ?? ""}`}>{children}</span>;
 
