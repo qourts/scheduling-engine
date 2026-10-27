@@ -48,6 +48,7 @@ export class ParticipantModel {
     for (const slot of match.slots) {
       if (slot.type === "team") tokens.add(`team:${slot.teamId}`);
       else if (slot.type === "group_rank") tokens.add(`rank:${slot.groupId}:${slot.rank}`);
+      else if (slot.type === "wildcard") tokens.add(`wildcard:${slot.stageId}:${slot.rank}:${slot.index}`);
       else for (const t of this.entryTokens(slot.matchId)) tokens.add(t);
     }
     this.tokensCache.set(matchId, tokens);
@@ -122,6 +123,13 @@ export class ParticipantModel {
     if (slot.type === "team") return new Set([slot.teamId]);
     if (slot.type === "group_rank") {
       return new Set(this.inventory.groupByKey.get(groupKey(slot.divisionId, slot.stageId, slot.groupId))!.teamIds);
+    }
+    if (slot.type === "wildcard") {
+      // Any team of any group of the stage could turn out to be the best team of that position.
+      const prefix = `${slot.divisionId}|${slot.stageId}|`;
+      const teams = new Set<Id>();
+      for (const [key, group] of this.inventory.groupByKey) if (key.startsWith(prefix)) group.teamIds.forEach((t) => teams.add(t));
+      return teams;
     }
     return this.possibleTeams(slot.matchId);
   }

@@ -121,6 +121,17 @@ export interface ConsecutiveBlocksInstruction {
   note?: string;
 }
 
+/**
+ * Keep each team's preliminary (pool) matches on one calendar day. Meaningful for multi-day events; a preference only.
+ * Omit `divisionIds` to apply it to every division. It never changes the event dates: a one-day event stays one day.
+ */
+export interface SameDayPreliminariesInstruction {
+  id: Id;
+  kind: "same_day_preliminaries";
+  divisionIds?: Id[];
+  note?: string;
+}
+
 export type InstructionBody =
   | TimeWindowInstruction
   | CourtAllowlistInstruction
@@ -128,7 +139,8 @@ export type InstructionBody =
   | CourtBlackoutInstruction
   | MinRestInstruction
   | LockedPlacementInstruction
-  | ConsecutiveBlocksInstruction;
+  | ConsecutiveBlocksInstruction
+  | SameDayPreliminariesInstruction;
 
 export type InstructionKind = InstructionBody["kind"];
 

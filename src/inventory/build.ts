@@ -135,6 +135,10 @@ function buildKnockout(
       groupId: previous.groups[token.groupIndex]!.groupId,
       rank: token.rank,
     }));
+    const wildcards = stage.source.wildcards;
+    for (let k = 1; wildcards && k <= wildcards.count; k++) {
+      entrants.push({ type: "wildcard", divisionId: division.id, stageId: previous.stageId, rank: wildcards.rank, index: k });
+    }
   }
 
   const plan = planKnockout(entrants, stage.thirdPlaceMatch);
@@ -211,6 +215,11 @@ function dependenciesOf(slots: readonly Slot[], groupByKey: ReadonlyMap<string, 
       const group = groupByKey.get(groupKey(slot.divisionId, slot.stageId, slot.groupId));
       if (!group) throw new Error(`Unknown group ${slot.groupId}`);
       group.matchIds.forEach((id) => add(id, "group_complete"));
+    }
+    if (slot.type === "wildcard") {
+      // Who the wildcard is depends on every group of the stage, so it waits for all of them.
+      const prefix = `${slot.divisionId}|${slot.stageId}|`;
+      for (const [key, group] of groupByKey) if (key.startsWith(prefix)) group.matchIds.forEach((id) => add(id, "group_complete"));
     }
   }
   return deps;

@@ -34,6 +34,8 @@ export interface ScheduleMetrics {
   /** Adjacent matches on one court (same day) that belong to different divisions. */
   courtSwitches: number;
   avgCourtsPerDivision: number;
+  /** Teams whose preliminary matches fall on more than one calendar day. */
+  teamsSplitAcrossDays: number;
   /** Weighted violation of preference instructions (0 = all satisfied). */
   preferencePenalty: number;
 }
@@ -154,6 +156,7 @@ export function computeMetrics(ctx: PlanContext, placement: Placement): Schedule
     recoveryFairness: fairness,
     courtSwitches: switches,
     avgCourtsPerDivision: courtsOfDivision.size === 0 ? 0 : courtCounts / courtsOfDivision.size,
+    teamsSplitAcrossDays: splitTeams(ctx, placement, null),
     preferencePenalty: preferencePenalty(ctx, placement),
   };
 }
@@ -190,6 +193,8 @@ function preferencePenalty(ctx: PlanContext, placement: Placement): number {
         }
       }
       penalty += (weight * shortfall) / 60;
+    } else if (pref.kind === "same_day_preliminaries") {
+      penalty += weight * splitTeams(ctx, placement, pref.divisionIds ? new Set(pref.divisionIds) : null);
     } else if (pref.kind === "consecutive_blocks") {
       const spans = pref.divisionIds.map((id) => {
         let s = Infinity;
@@ -214,6 +219,17 @@ function preferencePenalty(ctx: PlanContext, placement: Placement): number {
     }
   }
   return penalty;
+}
+
+/** Number of teams (optionally only in the given divisions) whose preliminary matches span more than one day. */
+function splitTeams(ctx: PlanContext, placement: Placement, divisions: ReadonlySet<Id> | null): number {
+  let split = 0;
+  for (const list of ctx.teamPoolMatches.values()) {
+    if (divisions !== null && !divisions.has(ctx.divisionOf[list[0]!]!)) continue;
+    const first = Math.floor(placement.start[list[0]!]! / 1440);
+    if (list.some((i) => Math.floor(placement.start[i]! / 1440) !== first)) split++;
+  }
+  return split;
 }
 
 /** Weighted scalar cost used by construction and local search (lower is better). */

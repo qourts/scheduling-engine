@@ -82,7 +82,7 @@ export function compileInstructions(
   const localPreferences = new Map<MatchId, LocalPreference[]>();
   const globalPreferences: SchedulingInstruction[] = [];
   for (const p of preferences) {
-    if (p.kind === "min_rest" || p.kind === "consecutive_blocks") {
+    if (p.kind === "min_rest" || p.kind === "consecutive_blocks" || p.kind === "same_day_preliminaries") {
       globalPreferences.push(p);
       continue;
     }

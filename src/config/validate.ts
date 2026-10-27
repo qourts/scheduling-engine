@@ -158,6 +158,15 @@ export function validateConfig(config: TournamentConfig): ConfigValidationResult
     if (division.medalMatchDurationMinutes !== undefined) {
       positiveInt(division.medalMatchDurationMinutes, `${path}.medalMatchDurationMinutes`, "INVALID_DURATION");
     }
+    if (division.playMinutes !== undefined) positiveInt(division.playMinutes, `${path}.playMinutes`, "INVALID_DURATION");
+    if (division.transitionMinutes !== undefined) nonNegativeInt(division.transitionMinutes, `${path}.transitionMinutes`, "INVALID_DURATION");
+    if (division.playMinutes !== undefined && division.transitionMinutes !== undefined && division.playMinutes + division.transitionMinutes !== division.matchDurationMinutes) {
+      error(
+        "TIME_ALLOCATION_MISMATCH",
+        `${path}.matchDurationMinutes`,
+        `matchDurationMinutes (${division.matchDurationMinutes}) must equal playMinutes (${division.playMinutes}) + transitionMinutes (${division.transitionMinutes}): the transition allowance is already inside the scheduled slot and is not added again`,
+      );
+    }
     if (division.minRestMinutes !== undefined) nonNegativeInt(division.minRestMinutes, `${path}.minRestMinutes`, "INVALID_REST");
     if (![1, 3, 5].includes(division.scoring?.bestOf as number)) {
       error("INVALID_SCORING", `${path}.scoring.bestOf`, "bestOf must be 1, 3 or 5");
@@ -309,13 +318,23 @@ function validateStages(
           const groupCount = previous.kind === "groups" ? previous.groupCount : 1;
           const smallestGroup = Math.floor(teamCount / Math.max(1, groupCount));
           const perGroup = stage.source.perGroup;
+          const wildcards = stage.source.wildcards;
+          const wildcardCount = wildcards?.count ?? 0;
+          if (wildcards) {
+            if (!Number.isInteger(wildcards.count) || wildcards.count < 1 || wildcards.count > groupCount) {
+              error("INVALID_WILDCARDS", `${spath}.source.wildcards.count`, `wildcards.count must be an integer from 1 to the number of groups (${groupCount})`);
+            }
+            if (!Number.isInteger(wildcards.rank) || wildcards.rank <= perGroup || wildcards.rank > smallestGroup) {
+              error("INVALID_WILDCARDS", `${spath}.source.wildcards.rank`, `wildcards.rank must be an integer greater than perGroup (${perGroup}) and at most the smallest group size (${smallestGroup})`);
+            }
+          }
           if (!Number.isInteger(perGroup) || perGroup < 1) {
             error("INVALID_QUALIFIERS", `${spath}.source.perGroup`, "perGroup must be a positive integer");
           } else if (perGroup > smallestGroup) {
             error("TOO_MANY_QUALIFIERS", `${spath}.source.perGroup`, `perGroup (${perGroup}) exceeds the smallest group size (${smallestGroup})`);
-          } else if (perGroup * groupCount < 2) {
+          } else if (perGroup * groupCount + wildcardCount < 2) {
             error("TOO_FEW_QUALIFIERS", `${spath}.source.perGroup`, "The knockout needs at least 2 qualifiers");
-          } else if (stage.thirdPlaceMatch && perGroup * groupCount < 4) {
+          } else if (stage.thirdPlaceMatch && perGroup * groupCount + wildcardCount < 4) {
             error("THIRD_PLACE_NEEDS_SEMIFINALS", `${spath}.thirdPlaceMatch`, "A third-place match needs at least 4 entrants");
           } else if (perGroup === smallestGroup) {
             warn("ALL_TEAMS_QUALIFY", `${spath}.source.perGroup`, "Every team of the smallest group qualifies, so its group matches only decide seeding");

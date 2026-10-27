@@ -167,12 +167,18 @@ export function validateInstructions(inventory: Inventory, instructions: readonl
           error("UNSUPPORTED_MANDATORY", id, "Consecutive blocks are supported as a preference only; a mandatory block rule is not implemented");
         }
         break;
+      case "same_day_preliminaries":
+        if (instruction.divisionIds !== undefined) checkDivisions(id, instruction.divisionIds);
+        if (isMandatory(instruction)) {
+          error("UNSUPPORTED_MANDATORY", id, "Same-day preliminaries are supported as a preference only. To forbid a second day entirely, configure the event with a single tournament day.");
+        }
+        break;
       default: {
         const unknown = instruction as { id?: Id; kind?: string };
         error(
           "INVALID_VALUE",
           unknown.id ?? null,
-          `Unsupported instruction kind "${unknown.kind}". It was not applied. Supported kinds: time_window, court_allowlist, court_reservation, court_blackout, min_rest, locked_placement, consecutive_blocks.`,
+          `Unsupported instruction kind "${unknown.kind}". It was not applied. Supported kinds: time_window, court_allowlist, court_reservation, court_blackout, min_rest, locked_placement, consecutive_blocks, same_day_preliminaries.`,
         );
       }
     }

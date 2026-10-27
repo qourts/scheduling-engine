@@ -75,6 +75,8 @@ export class PlanContext {
   /** For the daily cap: matches in which a team could play, in dependency order. */
   readonly teamMatches: ReadonlyMap<Id, readonly number[]>;
   readonly teamsOfPlayer: ReadonlyMap<Id, readonly Id[]>;
+  /** Preliminary (group) matches of each team. */
+  readonly teamPoolMatches: ReadonlyMap<Id, readonly number[]>;
   readonly possibleTeamsOf: readonly (readonly Id[])[];
   readonly possiblePlayersOf: readonly (readonly Id[])[];
 
@@ -177,6 +179,12 @@ export class PlanContext {
       }
     }
     this.teamMatches = teamMatches;
+    const teamPoolMatches = new Map<Id, number[]>();
+    inventory.matches.forEach((m, i) => {
+      if (m.phase !== "group") return;
+      for (const slot of m.slots) if (slot.type === "team") teamPoolMatches.set(slot.teamId, [...(teamPoolMatches.get(slot.teamId) ?? []), i]);
+    });
+    this.teamPoolMatches = teamPoolMatches;
     const teamsOfPlayer = new Map<Id, Id[]>();
     for (const team of inventory.teamById.values()) {
       for (const p of team.playerIds) teamsOfPlayer.set(p, [...(teamsOfPlayer.get(p) ?? []), team.id]);

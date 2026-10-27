@@ -1,4 +1,7 @@
 import type { Id } from "../config/types.js";
+import { matchRoles } from "../instructions/selector.js";
+import { buildDependencyGraph } from "../inventory/graph.js";
+import { ParticipantModel } from "../inventory/participants.js";
 import type { Inventory, Match, MatchId } from "../inventory/types.js";
 import { Timeline } from "../schedule/timeline.js";
 import type { Schedule } from "../schedule/types.js";
@@ -25,6 +28,8 @@ export interface ReportOptions {
   longWaitMinutes?: number;
   /** How many entries to list in the shortest-recovery and longest-wait rankings. Default 5. */
   top?: number;
+  /** A medal match whose court is needed again within this many minutes of its planned end is flagged. Default 10. */
+  medalSlackMinutes?: number;
 }
 
 export interface Moment {
@@ -83,18 +88,43 @@ export interface DivisionTimeline {
    * it, so this is the guaranteed rest of a qualifier from its own pool, and it is never below the rest rule.
    */
   transitionMinutes: number | null;
+  /** The largest and the mean of the same gap over the division's first-round knockout matches: the progression delay. */
+  transitionMaxMinutes: number | null;
+  transitionMeanMinutes: number | null;
   /** True when a knockout match starts before the division's last preliminary match ends (it only needs its own pools). */
   playoffsOverlapPreliminaries: boolean;
   finish: Moment;
 }
 
-export type WarningCode = "BACK_TO_BACK" | "SHORT_RECOVERY" | "NO_SLACK" | "LONG_WAIT" | "TIGHT_PLAYOFF_TRANSITION" | "LOW_COURT_UTILIZATION" | "OVERNIGHT_SPLIT" | "UNSCHEDULED_MATCHES";
+export type WarningCode = "BACK_TO_BACK" | "SHORT_RECOVERY" | "NO_SLACK" | "LONG_WAIT" | "TIGHT_PLAYOFF_TRANSITION" | "LOW_COURT_UTILIZATION" | "OVERNIGHT_SPLIT" | "MEDAL_OVERRUN_RISK" | "UNSCHEDULED_MATCHES";
 
 export interface ReportWarning {
   severity: "risk" | "info";
   code: WarningCode;
   message: string;
   matchIds?: MatchId[];
+}
+
+/** A medal match and how much slack its court has after the planned end (medal matches have no hard time cap). */
+export interface MedalSlot {
+  matchId: MatchId;
+  divisionId: Id;
+  courtId: Id;
+  plannedEnd: Moment;
+  /** Minutes between the planned end plus turnover and the next match on that court; null when nothing follows. */
+  courtSlackMinutes: number | null;
+}
+
+/**
+ * Classification of a knockout match. A match is provisional while its participants depend on results that do not
+ * exist yet; its feasibility then rests on the validator covering every team that could reach it (`possibleTeams`).
+ */
+export interface PlayoffClass {
+  matchId: MatchId;
+  divisionId: Id;
+  provisional: boolean;
+  possibleTeams: number;
+  prerequisiteMatches: number;
 }
 
 export interface ScheduleReport {
@@ -127,6 +157,8 @@ export interface ScheduleReport {
     teamsSplitAcrossDays: number;
   };
   longestWaits: TeamWait[];
+  medalSlots: MedalSlot[];
+  playoffs: PlayoffClass[];
   divisions: DivisionTimeline[];
   categories: { categoryId: Id; finish: Moment }[];
   warnings: ReportWarning[];
@@ -147,6 +179,7 @@ export function analyzeSchedule(inventory: Inventory, schedule: Schedule, option
   const comfort = options.comfortRestMinutes ?? 2 * backToBack;
   const longWait = options.longWaitMinutes ?? 240;
   const top = options.top ?? 5;
+  const medalSlack = options.medalSlackMinutes ?? 10;
 
   const placed = new Map<MatchId, Placed>();
   for (const a of schedule.assignments) {
@@ -219,6 +252,17 @@ export function analyzeSchedule(inventory: Inventory, schedule: Schedule, option
     });
   }
 
+  const medalSlots = medalSlotsOf(inventory, placed, moment);
+  const tightMedals = medalSlots.filter((m) => m.courtSlackMinutes !== null && m.courtSlackMinutes < medalSlack);
+  if (tightMedals.length > 0) {
+    warnings.push({
+      severity: "info",
+      code: "MEDAL_OVERRUN_RISK",
+      message: `${tightMedals.length} of ${medalSlots.length} medal matches have less than ${medalSlack} minutes before their court is needed again. Medal matches have no hard time cap, so a prolonged match would delay the next one on that court.`,
+      matchIds: tightMedals.map((m) => m.matchId),
+    });
+  }
+  const playoffs = playoffClasses(inventory);
   const divisions = divisionTimelines(inventory, placed, moment);
   for (const d of divisions) {
     if (d.transitionMinutes !== null && d.transitionMinutes < comfort) {
@@ -260,6 +304,8 @@ export function analyzeSchedule(inventory: Inventory, schedule: Schedule, option
       teamsSplitAcrossDays: splitTeams,
     },
     longestWaits: waits.slice(0, top),
+    medalSlots,
+    playoffs,
     divisions,
     categories: [...categoryFinish].map(([categoryId, f]) => ({ categoryId, finish: moment(f) })).sort((a, b) => (a.categoryId < b.categoryId ? -1 : 1)),
     warnings,
@@ -328,6 +374,7 @@ function minimumRequired(inventory: Inventory, gap: RecoveryGap): number {
 function teamsSplitAcrossDays(placed: ReadonlyMap<MatchId, Placed>): number {
   const days = new Map<Id, Set<number>>();
   for (const p of placed.values()) {
+    if (p.match.phase !== "group") continue;
     for (const slot of p.match.slots) {
       if (slot.type !== "team") continue;
       const set = days.get(slot.teamId) ?? new Set<number>();
@@ -336,6 +383,37 @@ function teamsSplitAcrossDays(placed: ReadonlyMap<MatchId, Placed>): number {
     }
   }
   return [...days.values()].filter((set) => set.size > 1).length;
+}
+
+function medalSlotsOf(inventory: Inventory, placed: ReadonlyMap<MatchId, Placed>, moment: (absolute: number) => Moment): MedalSlot[] {
+  const roles = matchRoles(inventory);
+  const out: MedalSlot[] = [];
+  for (const [id, p] of placed) {
+    if (!roles.get(id)?.has("medal")) continue;
+    let next: number | null = null;
+    for (const q of placed.values()) if (q.court === p.court && q.start >= p.end && (next === null || q.start < next)) next = q.start;
+    out.push({
+      matchId: id,
+      divisionId: p.match.divisionId,
+      courtId: p.court,
+      plannedEnd: moment(p.end),
+      courtSlackMinutes: next === null ? null : next - (p.end + inventory.config.rules.courtTurnoverMinutes),
+    });
+  }
+  return out.sort((a, b) => a.plannedEnd.absolute - b.plannedEnd.absolute || (a.matchId < b.matchId ? -1 : 1));
+}
+
+function playoffClasses(inventory: Inventory): PlayoffClass[] {
+  const model = new ParticipantModel(inventory, buildDependencyGraph(inventory));
+  return inventory.matches
+    .filter((m) => m.phase === "knockout")
+    .map((m) => ({
+      matchId: m.id,
+      divisionId: m.divisionId,
+      provisional: !model.isResolved(m.id),
+      possibleTeams: model.possibleTeams(m.id).size,
+      prerequisiteMatches: m.dependencies.length,
+    }));
 }
 
 function teamWaits(inventory: Inventory, placed: ReadonlyMap<MatchId, Placed>): TeamWait[] {
@@ -384,6 +462,8 @@ function divisionTimelines(inventory: Inventory, placed: ReadonlyMap<MatchId, Pl
       preliminaryFinish: prelimFinish === null ? null : moment(prelimFinish),
       playoffStart: playoffStart === null ? null : moment(playoffStart),
       transitionMinutes: gaps.length === 0 ? null : Math.min(...gaps),
+      transitionMaxMinutes: gaps.length === 0 ? null : Math.max(...gaps),
+      transitionMeanMinutes: gaps.length === 0 ? null : gaps.reduce((a, b) => a + b, 0) / gaps.length,
       playoffsOverlapPreliminaries: prelimFinish !== null && playoffStart !== null && playoffStart < prelimFinish,
       finish: moment(Math.max(...own.map((p) => p.end))),
     });

@@ -171,6 +171,7 @@ export function analyzeFeasibility(inventory: Inventory): FeasibilityReport {
   }
 
   checks.push(...sharedCapacityChecks(contexts, turnover, config));
+  checks.push(...windowGroupChecks(inventory, graph, contexts, turnover));
   checks.push(...playerLoadChecks(inventory, contexts, graph, participants, timeline));
 
   const matchMinutes = inventory.matches.reduce((s, m) => s + m.durationMinutes, 0);
@@ -339,6 +340,149 @@ function sharedCapacityChecks(contexts: DivisionContext[], turnover: number, con
     });
   }
   return checks;
+}
+
+/**
+ * Divisions that share exactly the same courts and the same play windows (for example every division of a
+ * category that has its own time window) compete for the same court time, so their combined match minutes
+ * must fit inside it. This is a necessary condition, like the checks above.
+ */
+function windowGroupChecks(inventory: Inventory, graph: DependencyGraph, contexts: DivisionContext[], turnover: number): FeasibilityCheck[] {
+  const groups = new Map<string, DivisionContext[]>();
+  for (const ctx of contexts) {
+    const signature = JSON.stringify([ctx.courtIds, ctx.courtIntervals.map((intervals) => mergeIntervals(intervals))]);
+    groups.set(signature, [...(groups.get(signature) ?? []), ctx]);
+  }
+  const out: FeasibilityCheck[] = [];
+  for (const members of groups.values()) {
+    if (members.length < 2 || members.length === contexts.length) continue;
+    const first = members[0]!;
+    const demand = members.reduce((s, ctx) => s + ctx.matches.reduce((sum, m) => sum + m.durationMinutes + turnover, 0), 0);
+    const supply = first.courtIntervals.reduce((s, intervals) => s + mergeIntervals(intervals).reduce((x, i) => x + (i.end - i.start + turnover), 0), 0);
+    const shortfall = demand - supply;
+    const names = members.map((m) => m.division.id).join(", ");
+    const courtCount = Math.max(1, first.courtIds.length);
+    out.push({
+      id: `window_group:${members.map((m) => m.division.id).join("+")}`,
+      kind: "shared_capacity",
+      passed: shortfall <= 0,
+      required: demand,
+      available: supply,
+      unit: "match-minutes",
+      message:
+        shortfall <= 0
+          ? `Divisions ${names} share the same courts and windows and need ${demand} court-minutes of ${supply} available`
+          : `Divisions ${names} share the same courts and windows and need ${demand} court-minutes, but only ${supply} are available there (short by ${shortfall})`,
+      remedies:
+        shortfall <= 0
+          ? []
+          : [
+              {
+                kind: "add_courts",
+                value: Math.ceil(shortfall / Math.max(1, supply / courtCount)),
+                message: `Add about ${Math.ceil(shortfall / Math.max(1, supply / courtCount))} court(s) for these divisions, or extend their window by about ${Math.ceil(shortfall / courtCount)} minutes on every court`,
+              },
+            ],
+    });
+  }
+  out.push(...windowGroupTailChecks(inventory, graph, groups));
+  return out;
+}
+
+/** Longest chain, in minutes, that must still run after each match ends (rest plus duration of every dependent step). */
+function minutesAfter(inventory: Inventory, graph: DependencyGraph, restOf: (divisionId: Id) => number): Map<MatchId, number> {
+  const after = new Map<MatchId, number>();
+  for (let r = graph.order.length - 1; r >= 0; r--) {
+    const id = graph.order[r]!;
+    let best = 0;
+    for (const next of graph.successors.get(id) ?? []) {
+      const match = inventory.matchById.get(next)!;
+      best = Math.max(best, restOf(match.divisionId) + match.durationMinutes + after.get(next)!);
+    }
+    after.set(id, best);
+  }
+  return after;
+}
+
+/** Earliest time by which `work` match-minutes can have been played on the given courts, ignoring turnover (a relaxation). */
+function earliestWorkCompletion(courtIntervals: readonly Interval[][], work: number): number | null {
+  const events: [number, number][] = [];
+  for (const intervals of courtIntervals) for (const i of mergeIntervals(intervals)) events.push([i.start, 1], [i.end, -1]);
+  if (events.length === 0) return null;
+  events.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (work <= 0) return events[0]![0];
+  let rate = 0;
+  let cumulative = 0;
+  let previous = events[0]![0];
+  for (const [time, delta] of events) {
+    const next = cumulative + rate * (time - previous);
+    if (rate > 0 && next >= work) return previous + (work - cumulative) / rate;
+    cumulative = next;
+    previous = time;
+    rate += delta;
+  }
+  return null;
+}
+
+/**
+ * Tail bound for divisions that share courts and windows. The last of their first-round matches (those with no
+ * prerequisite) cannot end before the courts have had time to play all of them, and whichever it is, the longest chain
+ * of dependent matches (recovery plus each dependent match) still has to run afterwards. If that finish lies beyond the
+ * window, no schedule exists. This is a necessary condition: it ignores turnover and window gaps, which only make
+ * things harder.
+ */
+function windowGroupTailChecks(inventory: Inventory, graph: DependencyGraph, groups: ReadonlyMap<string, DivisionContext[]>): FeasibilityCheck[] {
+  const { config } = inventory;
+  const restOf = (cap: number) => (divisionId: Id) => {
+    const division = config.divisions.find((d) => d.id === divisionId)!;
+    return Math.min(cap, division.minRestMinutes ?? config.rules.minRestMinutes);
+  };
+  const out: FeasibilityCheck[] = [];
+  const currentAfter = minutesAfter(inventory, graph, restOf(Number.POSITIVE_INFINITY));
+  for (const members of groups.values()) {
+    const first = members[0]!;
+    const firstRound = members.flatMap((ctx) => ctx.matches.filter((m) => m.dependencies.length === 0));
+    const ends = first.courtIntervals.flat().map((i) => i.end);
+    if (firstRound.length === 0 || ends.length === 0) continue;
+    const completion = earliestWorkCompletion(first.courtIntervals, firstRound.reduce((sum, m) => sum + m.durationMinutes, 0));
+    if (completion === null) continue; // capacity failures are reported by the capacity checks
+    const windowEnd = Math.max(...ends);
+    const tailFor = (after: ReadonlyMap<MatchId, number>) => Math.min(...firstRound.map((m) => after.get(m.id)!));
+    const tail = tailFor(currentAfter);
+    if (tail === 0) continue;
+    const required = Math.ceil(completion) + tail;
+    const passed = required <= windowEnd;
+    const names = members.map((m) => m.division.id).join(", ");
+    const fmt = (t: number) => formatAbsolute(config, t);
+    const remedies: Remedy[] = [];
+    if (!passed) {
+      remedies.push({
+        kind: "extend_last_day",
+        value: required - windowEnd,
+        message: `Extend the window of ${names} by ${required - windowEnd} minutes (to ${fmt(required)}), or give these divisions more court time before ${fmt(windowEnd)}`,
+      });
+      const current = Math.max(...members.map((m) => m.rest));
+      for (let rest = current - 1; rest >= 0; rest--) {
+        if (Math.ceil(completion) + tailFor(minutesAfter(inventory, graph, restOf(rest))) <= windowEnd) {
+          remedies.push({ kind: "reduce_rest", value: rest, message: `Reduce the minimum recovery to ${rest} minutes (from ${current}) for these divisions` });
+          break;
+        }
+      }
+    }
+    out.push({
+      id: `window_group_tail:${members.map((m) => m.division.id).join("+")}`,
+      kind: "dependency_chain",
+      passed,
+      required,
+      available: windowEnd,
+      unit: "minute-of-tournament",
+      message: passed
+        ? `Divisions ${names}: all first-round matches cannot end before ${fmt(Math.ceil(completion))} and the longest playoff chain then needs ${tail} minutes, so they finish no earlier than ${fmt(required)} (window ends ${fmt(windowEnd)})`
+        : `Divisions ${names}: all first-round matches cannot end before ${fmt(Math.ceil(completion))} (court capacity) and the longest playoff chain (recovery plus dependent matches) then needs ${tail} more minutes, so they cannot finish before ${fmt(required)}, but their window ends at ${fmt(windowEnd)}`,
+      remedies,
+    });
+  }
+  return out;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { analyzeFeasibility } from "../feasibility/analyze.js";
+import { analyzeFeasibility, type FeasibilityReport } from "../feasibility/analyze.js";
 import { checkInstructions } from "../instructions/check.js";
 import { compileInstructions } from "../instructions/compile.js";
 import type { Inventory } from "../inventory/types.js";
@@ -103,6 +103,18 @@ export function optimizeSchedules(inventory: Inventory, options: OptimizeOptions
     return elapsed;
   };
 
+  // A failed necessary condition is a proof that no schedule exists, so the fallback ladder cannot help: report the
+  // proof with one construction attempt as an example of what does not fit.
+  const feasibility = analyzeFeasibility(constraints.inventory);
+  if (feasibility.status === "infeasible") {
+    const example = construct(ctx, { order: "critical", weights: strategies[0]!.weights, candidatesPerCourt: 1 });
+    timing.constructionMs = lap();
+    return emptyResult("no_schedule", seed, clock() - startedAt, inventory, {
+      failure: explainFailure(ctx, feasibility, example),
+      warnings: [...constraints.warnings],
+    });
+  }
+
   // 1. Construction with bounded fallbacks and retries.
   const built = new Map<StrategyId, ConstructResult>();
   const constructionMethods: Partial<Record<StrategyId, ConstructionMethod>> = {};
@@ -117,7 +129,7 @@ export function optimizeSchedules(inventory: Inventory, options: OptimizeOptions
   timing.constructionMs = lap();
   if (built.size === 0) {
     return emptyResult("no_schedule", seed, clock() - startedAt, inventory, {
-      failure: explainFailure(ctx, constraints.inventory, bestPartial),
+      failure: explainFailure(ctx, feasibility, bestPartial),
       warnings: [...constraints.warnings],
     });
   }
@@ -228,7 +240,7 @@ export function optimizeSchedules(inventory: Inventory, options: OptimizeOptions
   };
   if (ordered.length === 0) {
     // Every candidate failed independent verification (for example a lock that contradicts another rule).
-    result.failure = explainFailure(ctx, constraints.inventory, null);
+    result.failure = explainFailure(ctx, feasibility, null);
   }
   if (rejected.length > 0) result.rejected = rejected;
   return result;
@@ -339,8 +351,7 @@ function buildBaseline(
 }
 
 /** Classifies a failure honestly: a proof, a contradiction in the instructions, or "not found". */
-function explainFailure(ctx: PlanContext, effective: Inventory, partial: ConstructResult | null): FailureReport {
-  const feasibility = analyzeFeasibility(effective);
+function explainFailure(ctx: PlanContext, feasibility: FeasibilityReport, partial: ConstructResult | null): FailureReport {
   const unplaced: UnplacedMatch[] = partial ? [...partial.unplaced].map(([m, reason]) => ({ matchId: ctx.matches[m]!.id, reason })) : [];
   const lockedProblems = partial ? [...partial.unplaced].filter(([m]) => ctx.locked.has(m)).map(([m]) => ctx.matches[m]!.id) : [];
   const proof: string[] = feasibility.checks.filter((c) => !c.passed).map((c) => c.message);
@@ -638,13 +649,15 @@ function recommend(ordered: readonly Candidate[], comparison: Comparison): Recom
   const balanced = ordered.find((c) => c.strategy.id === "balanced_operations");
   const name = (id: StrategyId) => STRATEGIES[id].name;
   if (balanced) {
+    // Only a material difference can override the default: a dominance inside the equivalence thresholds is noise.
     const dominatedBy = comparison.relations.find(
-      (r) => (r.a === "balanced_operations" && r.dominance === "b_dominates") || (r.b === "balanced_operations" && r.dominance === "a_dominates"),
+      (r) => r.materiallyDifferent && ((r.a === "balanced_operations" && r.dominance === "b_dominates") || (r.b === "balanced_operations" && r.dominance === "a_dominates")),
     );
     if (!dominatedBy) {
       const fast = ordered.find((c) => c.strategy.id === "fastest_finish");
       const detail = fast ? ` ${describeTradeOff(fast.strategy.name, fast.metrics, balanced.strategy.name, balanced.metrics, materialDifferences(fast.metrics, balanced.metrics))}` : "";
-      return { strategy: "balanced_operations", reason: `Balanced Operations is the default recommendation.${detail}` };
+      const equivalent = comparison.equivalent.length > 0 ? " Some options are materially equivalent to each other (see the comparison), so the choice makes little practical difference." : "";
+      return { strategy: "balanced_operations", reason: `Balanced Operations is the default recommendation.${detail}${equivalent}` };
     }
     const better = dominatedBy.a === "balanced_operations" ? dominatedBy.b : dominatedBy.a;
     return { strategy: better, reason: `${name(better)} is at least as good as Balanced Operations on every measured objective and strictly better on at least one, so it is recommended instead.` };

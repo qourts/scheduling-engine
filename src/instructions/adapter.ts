@@ -106,6 +106,8 @@ export function describeInstruction(i: SchedulingInstruction, config: Tournament
       return `${strength}: match ${i.matchId} be on ${courtName(i.courtId)} at ${formatClock(i.start)} on ${i.day}.`;
     case "consecutive_blocks":
       return `${strength}: ${divisions(i.divisionIds)} be played in consecutive blocks, in this order.`;
+    case "same_day_preliminaries":
+      return `${strength}: each team's preliminary matches in ${i.divisionIds ? divisions(i.divisionIds) : "every division"} stay on one day.`;
   }
 }
 

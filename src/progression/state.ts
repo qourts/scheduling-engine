@@ -1,5 +1,6 @@
 import type { Division, Id } from "../config/types.js";
 import { groupKey, type Inventory, type MatchId, type Slot } from "../inventory/types.js";
+import { fnv1a } from "../util/hash.js";
 import { err, ok, type Result } from "../util/result.js";
 import { computeGroupStandings } from "./standings.js";
 import type {
@@ -120,6 +121,8 @@ function derive(inventory: Inventory, results: ReadonlyMap<MatchId, MatchResult>
         const table = standings.get(groupKey(slot.divisionId, slot.stageId, slot.groupId))!;
         return table.complete ? table.rows[slot.rank - 1]!.teamId : null;
       }
+      case "wildcard":
+        return resolveWildcard(inventory, standings, slot);
       case "winner":
       case "loser": {
         const result = results.get(slot.matchId);
@@ -141,6 +144,26 @@ function derive(inventory: Inventory, results: ReadonlyMap<MatchId, MatchResult>
     status.set(match.id, results.has(match.id) ? "completed" : a !== null && b !== null ? "ready" : "waiting");
   }
   return { results, participants, status, standings, log };
+}
+
+/**
+ * The `index`-th best team among those that finished in position `rank` of their group, once every group of the
+ * stage is complete. Ranked by wins, game difference, point difference, points for, then a deterministic draw.
+ */
+function resolveWildcard(inventory: Inventory, standings: ReadonlyMap<string, GroupStandings>, slot: Extract<Slot, { type: "wildcard" }>): Id | null {
+  const tables = [...standings].filter(([key]) => key.startsWith(`${slot.divisionId}|${slot.stageId}|`)).map(([, table]) => table);
+  if (tables.length === 0 || tables.some((t) => !t.complete)) return null;
+  const candidates = tables.map((t) => t.rows[slot.rank - 1]!);
+  const draw = (teamId: Id) => fnv1a(`${inventory.config.id}|${slot.divisionId}|wildcard|${teamId}`);
+  const ranked = [...candidates].sort(
+    (a, b) =>
+      b.wins - a.wins ||
+      b.gamesWon - b.gamesLost - (a.gamesWon - a.gamesLost) ||
+      b.pointsFor - b.pointsAgainst - (a.pointsFor - a.pointsAgainst) ||
+      b.pointsFor - a.pointsFor ||
+      draw(a.teamId) - draw(b.teamId),
+  );
+  return ranked[slot.index - 1]?.teamId ?? null;
 }
 
 function divisionOf(inventory: Inventory, divisionId: Id): Division {
