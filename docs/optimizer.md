@@ -43,6 +43,7 @@ Invalid inputs are reported, never silently corrected.
 |---|---|
 | `proven_infeasible` | A necessary condition fails (court capacity, a division that cannot fit its windows, a match with no court and start time that satisfy the rules, a player who cannot play every possible match). This is a proof. `failure.proof` lists the failed conditions and `failure.feasibility` gives quantified remedies |
 | `contradictory_instructions` | Locked placements contradict the rules or each other. Most such contradictions are caught earlier, by `validateInstructions`, as `invalid_instructions` with a message naming the instruction and what to change |
+| `verification_failed` | Schedules were constructed but the independent validators rejected every candidate (see `rejected`). It should never happen, and it is not a proof of impossibility |
 | `not_found` | The construction heuristics did not place every match. **This is not a proof that no schedule exists.** The statement says so and suggests relaxing windows, adding court time or day length, or raising the budget |
 
 Construction is bounded: six deterministic attempts (the strategy's own weights, then Fastest Finish weights, in different placement orders) followed by eight seeded randomised retries. In measured tight cases the deterministic alternative orders did the rescuing (for example a day-length at which the default order left 48 matches unplaced and the time-sweep order placed all 288). An evict-and-reinsert repair step was also tried and removed because it placed nothing extra in any measured case.
@@ -102,7 +103,7 @@ Different weights do not guarantee different schedules, so the engine checks.
 ## Budgets, determinism and degradation
 
 - `budget.totalMs` caps wall-clock time (default 8 s up to 300 matches, 24 s above). Reaching it is not an error: the best valid schedule found so far is returned and `option.budgetExhausted` is true. The cap applies to the search and diversification phases; construction and verification cannot be interrupted, so a very small cap can be exceeded. `diagnostics.budgetOverrunMs` reports by how much.
-- `diagnostics.timing` reports construction, search, verification and diversification time separately. Construction is outside the search cap; in the measured cases it took under half a second for 288 matches and a few percent of the total, and `budgetOverrunMs` reports any overrun.
+- `diagnostics.timing` reports construction, search, verification and diversification time separately. The deterministic construction attempts are not interrupted by the search cap (the randomised retries are); in the measured cases construction took under half a second for 288 matches and a few percent of the total, and `budgetOverrunMs` reports any overrun.
 - `budget.iterationsPerStrategy` caps local-search moves (default 30,000). With this set and `totalMs` unset the run is bit-for-bit reproducible for a seed. With a time cap, reproducibility holds only when the iteration cap is reached first.
 - `option.search.stopReason` is `iterations`, `time` or `converged` (no improvement for a long stretch).
 - The core is a pure function of its inputs: nothing is mutated, and the clock is only used to enforce the safety cap (inject `clock` in tests).

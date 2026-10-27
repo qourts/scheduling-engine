@@ -156,7 +156,9 @@ export function analyzeSchedule(inventory: Inventory, schedule: Schedule, option
     placed.set(a.matchId, { start, end: start + match.durationMinutes, court: a.courtId, match });
   }
   const moment = (absolute: number): Moment => {
-    const day = timeline.dayOf(absolute);
+    // An instant exactly at a day boundary is the end of the previous day (24:00), never 00:00 of a day that may not exist.
+    const endOfDay = absolute > 0 && absolute % MINUTES_PER_DAY === 0;
+    const day = timeline.dayOf(endOfDay ? absolute - 1 : absolute);
     const minute = absolute - config.days.indexOf(day) * MINUTES_PER_DAY;
     return { day, minute, absolute, label: `${day} ${formatClock(minute)}` };
   };

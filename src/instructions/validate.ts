@@ -182,7 +182,12 @@ export function validateInstructions(inventory: Inventory, instructions: readonl
     }
   }
 
-  checkLockedPlacements(inventory, instructions, issues, selectors);
+  try {
+    checkLockedPlacements(inventory, instructions, issues, selectors);
+  } catch {
+    // A malformed instruction next to a lock must not turn validation into an exception; it is reported above.
+    issues.push({ severity: "error", code: "INVALID_VALUE", instructionId: null, message: "A malformed instruction prevented the locked-placement checks; fix the reported instructions and validate again." });
+  }
 
   return { ok: !issues.some((i) => i.severity === "error"), issues };
 }

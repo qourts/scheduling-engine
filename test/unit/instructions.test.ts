@@ -117,6 +117,19 @@ describe("validateInstructions hardening", () => {
     expect(result.issues.filter((i) => i.severity === "error").length).toBeGreaterThanOrEqual(malformed.length);
   });
 
+  it("does not throw when a valid lock sits next to malformed instructions", () => {
+    const lock = { id: "lk", kind: "locked_placement", strength: "mandatory", matchId: inv.matches[0]!.id, courtId: "C1", day: DAY1, start: 9 * 60 };
+    const malformed = [
+      { kind: "court_blackout", strength: "mandatory", courtIds: undefined },
+      { kind: "time_window", strength: "mandatory", selector: undefined, earliestStart: { minute: 1 } },
+      { id: "", kind: "court_allowlist", strength: "mandatory" },
+    ];
+    for (const bad of malformed) {
+      expect(() => issues([lock, bad])).not.toThrow();
+      expect(issues([lock, bad]).ok).toBe(false);
+    }
+  });
+
   it("rejects unknown selector phases instead of silently selecting nothing", () => {
     const result = issues([{ id: "p", kind: "time_window", strength: "mandatory", selector: { phases: ["groups"] }, latestStart: { minute: 600 } }]);
     expect(result.ok).toBe(false);

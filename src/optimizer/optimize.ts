@@ -330,7 +330,7 @@ function buildBaseline(
       weights: r % 3 === 0 ? strategy.weights : fastest.weights,
       candidatesPerCourt: 1 + (r % 3),
       noise: 0.6,
-      random: createRandom(recovery.seed * 31 + r + 1),
+      random: createRandom(recovery.seed * 31 + r + 1 + strategy.label.charCodeAt(0) * 1009),
     });
     if (result.unplaced.size === 0) return { result, method: "randomized_retry" };
     if (result.unplaced.size < best!.unplaced.size) best = result;
@@ -350,7 +350,17 @@ function explainFailure(ctx: PlanContext, effective: Inventory, partial: Constru
     }
   });
 
-  if (lockedProblems.length > 0) {
+  if (!partial) {
+    return {
+      kind: "verification_failed",
+      statement: "Schedules were constructed, but every candidate was rejected by the independent validators, so none is returned. The violations are in `rejected`. This is not a proof that no schedule exists.",
+      proof,
+      unplaced,
+      feasibility,
+      lockedProblems,
+    };
+  }
+  if (proof.length === 0 && lockedProblems.length > 0) {
     return {
       kind: "contradictory_instructions",
       statement: `The locked placements of ${lockedProblems.join(", ")} contradict the tournament rules or other instructions. Move or remove the locks.`,
@@ -363,7 +373,7 @@ function explainFailure(ctx: PlanContext, effective: Inventory, partial: Constru
   if (proof.length > 0) {
     return {
       kind: "proven_infeasible",
-      statement: "No schedule exists: at least one necessary condition fails. This is a proof, not a search outcome. Each failed condition is listed in `proof`, with the remedies in `feasibility`.",
+      statement: `No schedule exists: at least one necessary condition fails. This is a proof, not a search outcome. Each failed condition is listed in \`proof\`, with the remedies in \`feasibility\`.${lockedProblems.length > 0 ? ` Locked placements of ${lockedProblems.join(", ")} also conflict with the rules.` : ""}`,
       proof,
       unplaced,
       feasibility,
@@ -373,7 +383,7 @@ function explainFailure(ctx: PlanContext, effective: Inventory, partial: Constru
   return {
     kind: "not_found",
     statement:
-      "No schedule was found. The construction heuristics, including bounded randomised retries, did not place every match. This is NOT a proof that no schedule exists: relaxing mandatory windows or court rules, adding court time or day length, or raising the budget may succeed.",
+      "No schedule was found. The construction heuristics, including any randomised retries the time budget allowed, did not place every match. This is NOT a proof that no schedule exists: relaxing mandatory windows or court rules, adding court time or day length, or raising the budget may succeed.",
     proof: [],
     unplaced,
     feasibility,
@@ -398,6 +408,10 @@ function ensureEarliestFinish(
 
   const strategy = STRATEGIES.fastest_finish;
   const remaining = budget.hardDeadline === undefined ? undefined : Math.max(0, budget.hardDeadline - budget.clock());
+  const gapMinutes = Math.round(fastest.metrics.finishMinute - earliest.metrics.finishMinute);
+  if (remaining === 0) {
+    return { exception: `Fastest Finish finishes ${gapMinutes} minutes later than ${earliest.strategy.name}, and the time budget was used up before the continuation search could run.` };
+  }
   const result = localSearch(ctx, earliest.state, {
     weights: amplified(strategy, [], 1),
     random: createRandom(budget.seed * 104729 + 7),
@@ -405,7 +419,9 @@ function ensureEarliestFinish(
     ...(remaining === undefined ? {} : { deadline: budget.clock() + remaining / 2 }),
     clock: budget.clock,
   });
-  if (isValid(result.state) && result.metrics.finishMinute <= earliest.metrics.finishMinute) {
+  // Accept only a genuinely different schedule: a mere copy of the other option would undo the distinctness work.
+  const copiesEarliest = assignmentDistance(result.state, earliest.state) === 0;
+  if (!copiesEarliest && isValid(result.state) && result.metrics.finishMinute <= earliest.metrics.finishMinute) {
     return {
       replacement: {
         strategy,
@@ -418,9 +434,8 @@ function ensureEarliestFinish(
       },
     };
   }
-  const gap = Math.round(fastest.metrics.finishMinute - earliest.metrics.finishMinute);
   return {
-    exception: `Fastest Finish finishes ${gap} minutes later than ${earliest.strategy.name}. A continuation search from that schedule under Fastest Finish weights could not reproduce its finish, so Fastest Finish does not hold the earliest finish in this result.`,
+    exception: `Fastest Finish finishes ${gapMinutes} minutes later than ${earliest.strategy.name}. A continuation search from that schedule under Fastest Finish weights could not reach its finish with a schedule of its own, so Fastest Finish does not hold the earliest finish in this result.`,
   };
 }
 

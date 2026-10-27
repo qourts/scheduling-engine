@@ -124,9 +124,10 @@ export type ConstructionMethod = "strategy_weights" | "fastest_finish_weights" |
  * - `proven_infeasible`: a necessary condition fails, so no schedule exists (a proof).
  * - `contradictory_instructions`: locked placements contradict each other or other rules.
  * - `not_found`: the heuristics did not place every match. This is NOT a proof of impossibility.
+ * - `verification_failed`: schedules were constructed but the independent validators rejected them (see `rejected`).
  */
 export interface FailureReport {
-  kind: "proven_infeasible" | "contradictory_instructions" | "not_found";
+  kind: "proven_infeasible" | "contradictory_instructions" | "not_found" | "verification_failed";
   /** Plain-language statement of what is and is not established. */
   statement: string;
   /** The failed necessary conditions behind a `proven_infeasible` result; empty otherwise. */

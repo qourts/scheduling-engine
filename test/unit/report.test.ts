@@ -112,6 +112,18 @@ describe("analyzeSchedule", () => {
   });
 });
 
+describe("analyzeSchedule day boundaries", () => {
+  it("labels a finish exactly at the end of the last day as 24:00 of that day", () => {
+    const inventory = buildInventory(tournament({ courts: courts(1, [fullDay(DAY1, 22 * 60, 24 * 60)]), divisions: [{ id: "E", categoryId: "MD", teamCount: 2, stages: stages.roundRobin() }] }));
+    const match = inventory.matches[0]!;
+    const schedule: Schedule = { tournamentId: inventory.config.id, assignments: [{ matchId: match.id, courtId: "C1", day: DAY1, start: 24 * 60 - match.durationMinutes }] };
+    const report = analyzeSchedule(inventory, schedule);
+    expect(report.finish).toMatchObject({ day: DAY1, minute: 1440, label: `${DAY1} 24:00` });
+    expect(report.divisions[0]!.finish.label).toBe(`${DAY1} 24:00`);
+    expect(report.categories[0]!.finish.label).toBe(`${DAY1} 24:00`);
+  });
+});
+
 describe("medalMatchDurationMinutes", () => {
   const inventory = build();
 
