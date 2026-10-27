@@ -1,6 +1,11 @@
 # Milestone 3 plan: operator-facing Smart Scheduling application
 
-Status: **draft for approval. No Milestone 3 code has been written.** Scope and architecture below are proposals until approved.
+Status: **approved 2026-10-27 and in implementation** on `feature/milestone-3-app`. The four open decisions at the end of this plan were answered; see [milestone-3-report.md](milestone-3-report.md) for what was built, the Phase 3.0 measurements and the decisions as taken:
+
+1. Storage: local-first IndexedDB, behind a `ProjectStore` port. No Supabase yet.
+2. Natural language: deterministic parser first, optional server-side Claude adapter, operator confirmation always. No API service provisioned.
+3. Application type: internal web application in `apps/web`, no desktop wrapper, run locally, not deployed.
+4. First testers: the tournament director and one trusted Match Control operator. Recovery is operator-configurable; the Echelon five-minute value stays experimental.
 
 ## 1. Goal
 

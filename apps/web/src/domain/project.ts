@@ -29,7 +29,10 @@ export interface Generation {
   inputsKey: string;
   options: StoredOption[];
   recommended: StrategyId | null;
-  statement: string | null;
+  /** Why the engine recommends that option, in its own words. */
+  reason: string | null;
+  /** Honest notes about the set: equivalent options, why fewer than three, time-limited search. */
+  notes: string[];
 }
 
 export interface Revision {

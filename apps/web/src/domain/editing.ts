@@ -69,11 +69,14 @@ async function evaluate(runner: EngineRunner, config: TournamentConfig, kind: Pr
 }
 
 /** Plain-language reasons for a rejected proposal, taken verbatim from the engine. */
-export const reasonsOf = (p: Proposal): string[] => [
-  ...(p.blocked ? [p.blocked] : []),
-  ...p.violations.map((v) => `${v.certainty === "possible" ? "Possible: " : ""}${v.message}`),
-  ...p.instructionViolations.map((v) => v.message),
-];
+const plainRuleIds = (message: string) => message.replace(/\s*\((?:rule|pending)-[a-z0-9]+\)/gi, " (one of your confirmed rules)");
+
+export const reasonsOf = (p: Proposal): string[] =>
+  [
+    ...(p.blocked ? [p.blocked] : []),
+    ...p.violations.map((v) => `${v.certainty === "possible" ? "Possible: " : ""}${v.message}`),
+    ...p.instructionViolations.map((v) => v.message),
+  ].map(plainRuleIds);
 
 export interface Impact {
   matchesMoved: number;
