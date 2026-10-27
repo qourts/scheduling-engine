@@ -22,6 +22,8 @@
 
   /* ---- type ---- */
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* Display face for headings, numbers and labels: heavy, tight and italic for a fast, athletic feel. System fonts only, so nothing loads. */
+  --font-display: "Segoe UI Variable Display", "Segoe UI", "SF Pro Display", -apple-system, BlinkMacSystemFont, Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, Menlo, monospace;
   --fs-xs: 12px;
   --fs-sm: 13px;
@@ -45,9 +47,10 @@
   --s-12: 48px;
 
   /* ---- shape and motion ---- */
-  --r-sm: 8px;
-  --r-md: 12px;
-  --r-lg: 18px;
+  --r-sm: 6px;
+  --r-md: 9px;
+  --r-lg: 14px;
+  --cut: 14px; /* size of the angled "speed cut" corner on hero panels and primary actions */
   --r-pill: 999px;
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
   --dur-fast: 120ms;
@@ -90,8 +93,8 @@
   --info-bg: #e3f5f7;
 
   /* elevation */
-  --sh-1: 0 1px 2px rgb(13 21 31 / 6%), 0 1px 1px rgb(13 21 31 / 4%);
-  --sh-2: 0 2px 6px rgb(13 21 31 / 8%), 0 10px 28px rgb(13 21 31 / 8%);
+  --sh-1: 0 1px 2px rgb(13 21 31 / 7%), 0 2px 8px rgb(13 21 31 / 4%);
+  --sh-2: 0 4px 10px rgb(13 21 31 / 9%), 0 16px 36px rgb(13 21 31 / 12%);
   --sh-pop: 0 12px 40px rgb(13 21 31 / 28%);
 
   /* matrix */
