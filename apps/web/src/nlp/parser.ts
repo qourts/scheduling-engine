@@ -112,7 +112,8 @@ function courtsOf(text: string, vocab: InstructionVocabulary): string[] {
   const out = new Set<string>();
   const t = norm(text);
   const range = /\bcourts?\s*(\d+)\s*(?:-|–|to|through)\s*(\d+)\b/.exec(t);
-  const list = /\bcourts?\s*((?:\d+(?:\s*(?:,|and|&)\s*)?)+)/.exec(t);
+  // "courts 4,5,6, and 7" and "courts 4, 5 & 6": any run of commas and "and" between numbers.
+  const list = /\bcourts?\s*(\d+(?:(?:\s*(?:,|and|&)\s*)+\d+)*)/.exec(t);
   const numbers = new Set<number>();
   if (range) for (let n = Number(range[1]); n <= Number(range[2]); n++) numbers.add(n);
   else if (list?.[1]) for (const n of list[1].match(/\d+/g) ?? []) numbers.add(Number(n));
@@ -225,7 +226,9 @@ function interpret(sentence: string, vocab: InstructionVocabulary): Outcome {
     return { ...base, body: { id: "", kind: "court_reservation", courtIds: courts, selector: { roles } }, strength: strengthFrom(text) };
   }
 
-  if (/\bonly\b/.test(t) && /\bcourts?\b/.test(t)) {
+  // "Put Low Intermediate men's in courts 4,5,6 and 7" restricts those divisions to those courts, like "only on".
+  const placement = /\b(put|place|play|assign|schedule|keep|move)\b/.test(t) && /\b(?:in|on|at|to)\s+courts?\b/.test(t);
+  if ((/\bonly\b/.test(t) || placement) && /\bcourts?\b/.test(t)) {
     const courts = courtsOf(text, vocab);
     const target = targetOf(text, vocab);
     if (!courts.length) return { reason: "I could not tell which courts you mean. Try: High Intermediate only on courts 1-4." };

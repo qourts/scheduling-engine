@@ -56,6 +56,13 @@ describe("deterministic instruction parser", () => {
     expect((r.body as { courtIds: string[] }).courtIds).toEqual(["C1", "C2", "C3", "C4"]);
   });
 
+  it("reads a placement sentence with a messy court list as a court restriction", () => {
+    const r = one("put high intermediate men's in courts 1,2,3,and 4");
+    expect(r.body).toMatchObject({ kind: "court_allowlist", courtIds: ["C1", "C2", "C3", "C4"] });
+    expect(r.strength).toBeNull();
+    expect(one("Place High Intermediate on courts 1, 2 & 3.").body).toMatchObject({ courtIds: ["C1", "C2", "C3"] });
+  });
+
   it("leaves strength undecided when the wording does not say, never defaulting to mandatory", () => {
     for (const text of ["Reserve Court 10 for medal matches.", "High Intermediate only on courts 1-4.", "At least 20 minutes between matches for High Intermediate."]) {
       expect(one(text).strength, text).toBeNull();
