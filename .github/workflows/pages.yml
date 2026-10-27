@@ -29,12 +29,13 @@ jobs:
       - name: Engine checks
         run: |
           npm run typecheck
-          npm test
+          # Some existing engine scenario tests take several seconds; shared CI runners are slower than a laptop.
+          npm test -- --testTimeout=60000
           npm run build
       - name: App checks
         run: |
           npm run typecheck -w apps/web
-          npm test -w apps/web
+          npm test -w apps/web -- --testTimeout=60000
       - name: Security audit
         run: npm audit --audit-level=high
       - name: Build the static preview
