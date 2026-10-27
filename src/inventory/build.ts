@@ -158,7 +158,8 @@ function buildKnockout(
       roundLabel: thirdPlace ? "Third-place match" : knockoutRoundLabel(round, plan.roundCount),
       label: thirdPlace ? "3P" : roundSize === 1 ? code : code.startsWith("R") ? `${code}-${index + 1}` : `${code}${index + 1}`,
       slots,
-      durationMinutes: division.matchDurationMinutes,
+      // Medal matches (the final and the third-place match) may have their own duration estimate.
+      durationMinutes: thirdPlace || round === plan.roundCount ? (division.medalMatchDurationMinutes ?? division.matchDurationMinutes) : division.matchDurationMinutes,
       dependencies: dependenciesOf(slots, groupByKey),
     };
     if (thirdPlace) match.thirdPlace = true;

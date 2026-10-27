@@ -35,6 +35,24 @@ const result = optimizeSchedules(buildInventory(config), {
 
 Invalid inputs are reported, never silently corrected.
 
+## Why no schedule was returned
+
+`no_schedule` always carries a `failure` whose `kind` says what is and is not established:
+
+| `failure.kind` | Meaning |
+|---|---|
+| `proven_infeasible` | A necessary condition fails (court capacity, a division that cannot fit its windows, a match with no court and start time that satisfy the rules, a player who cannot play every possible match). This is a proof. `failure.proof` lists the failed conditions and `failure.feasibility` gives quantified remedies |
+| `contradictory_instructions` | Locked placements contradict the rules or each other. Most such contradictions are caught earlier, by `validateInstructions`, as `invalid_instructions` with a message naming the instruction and what to change |
+| `not_found` | The construction heuristics did not place every match. **This is not a proof that no schedule exists.** The statement says so and suggests relaxing windows, adding court time or day length, or raising the budget |
+
+Construction is bounded: six deterministic attempts (the strategy's own weights, then Fastest Finish weights, in different placement orders) followed by eight seeded randomised retries. In measured tight cases the deterministic alternative orders did the rescuing (for example a day-length at which the default order left 48 matches unplaced and the time-sweep order placed all 288). An evict-and-reinsert repair step was also tried and removed because it placed nothing extra in any measured case.
+
+A search that merely ran out of time is not a failure: the options are valid, `diagnostics.timeLimited` is true and `option.budgetExhausted` marks the affected options.
+
+## Recovery definition
+
+Recovery is measured from the **end of allocated court time** of a player's previous match (start + the match's duration, which already contains any warm-up or changeover the configuration puts into the duration) to the **start** of the next match. Court turnover is a court buffer, not player rest: it is neither added to nor subtracted from recovery, and the hard rest rule uses the same basis. Active play ends no later than the allocated end, so the recovery reported is a lower bound on rest measured from the end of active play. If a venue wants rest to start after an assumed active-play end, shorten the match duration and carry the difference in `minRestMinutes`.
+
 ## Strategies
 
 Three objective weightings over the same measured quantities. Hard rules and mandatory instructions are never traded against any weight.
@@ -62,6 +80,14 @@ Measured on every option (`option.metrics`), all in minutes unless noted.
 
 Recovery is measured where the participant is certain: consecutive definite matches of a player, and winner/loser links between a feeder and the match it feeds. Unresolved playoff participants cannot be attributed to a player and do not enter these measures, although the hard rules still cover them for every possible outcome.
 
+## Schedule report
+
+`analyzeSchedule(inventory, schedule)` describes any schedule (optimizer output or manually edited), computed from the schedule alone: planned start and finish, span, per-court matches, utilisation and idle minutes, recovery minimum, mean and maximum, back-to-back occurrences and affected teams, the teams with the shortest recovery and the longest waits, teams whose pool play is split across days, completion and preliminary-to-playoff transition per division and category, and warnings. A playoff transition is measured per first-round knockout match against the pools it depends on, because a semifinal only waits for its own pools. Warnings are `risk` (back-to-backs, unscheduled matches) or `info`.
+
+## Fastest Finish guarantee
+
+After the other options are final, Fastest Finish is checked against them. If any returned option finishes earlier, the search continues from that option's schedule under Fastest Finish weights. If that cannot reproduce the earlier finish the exception is stated in `comparison.explanation`. Overall duration and total idle court-minutes are different measures, and Fastest Finish is not guaranteed to have the least idle time.
+
 ## Duplicate and equivalent options
 
 Different weights do not guarantee different schedules, so the engine checks.
@@ -76,6 +102,7 @@ Different weights do not guarantee different schedules, so the engine checks.
 ## Budgets, determinism and degradation
 
 - `budget.totalMs` caps wall-clock time (default 8 s up to 300 matches, 24 s above). Reaching it is not an error: the best valid schedule found so far is returned and `option.budgetExhausted` is true. The cap applies to the search and diversification phases; construction and verification cannot be interrupted, so a very small cap can be exceeded. `diagnostics.budgetOverrunMs` reports by how much.
+- `diagnostics.timing` reports construction, search, verification and diversification time separately. Construction is outside the search cap; in the measured cases it took under half a second for 288 matches and a few percent of the total, and `budgetOverrunMs` reports any overrun.
 - `budget.iterationsPerStrategy` caps local-search moves (default 30,000). With this set and `totalMs` unset the run is bit-for-bit reproducible for a seed. With a time cap, reproducibility holds only when the iteration cap is reached first.
 - `option.search.stopReason` is `iterations`, `time` or `converged` (no improvement for a long stretch).
 - The core is a pure function of its inputs: nothing is mutated, and the clock is only used to enforce the safety cap (inject `clock` in tests).

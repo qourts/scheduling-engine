@@ -21,6 +21,8 @@ import { PlacementState } from "./state.js";
 import { STRATEGIES, STRATEGY_ORDER, type Strategy, type StrategyId } from "./strategies.js";
 import type {
   Comparison,
+  ConstructionMethod,
+  FailureReport,
   OptimizeOptions,
   OptimizeResult,
   OptionRelation,
@@ -30,6 +32,8 @@ import type {
 } from "./types.js";
 
 const DEFAULT_ITERATIONS = 30_000;
+/** Randomised construction retries tried after the deterministic attempts fail. */
+const RECOVERY_ATTEMPTS = 8;
 const TYPICAL_MATCH_LIMIT = 300;
 const TYPICAL_BUDGET_MS = 8_000;
 const LARGE_BUDGET_MS = 24_000;
@@ -90,25 +94,33 @@ export function optimizeSchedules(inventory: Inventory, options: OptimizeOptions
   const capMs = options.budget?.totalMs ?? (options.budget?.iterationsPerStrategy !== undefined ? undefined : ctx.size <= TYPICAL_MATCH_LIMIT ? TYPICAL_BUDGET_MS : LARGE_BUDGET_MS);
   const hardDeadline = capMs === undefined ? undefined : startedAt + capMs;
 
-  // 1. Construction with fallbacks.
+  const timing = { constructionMs: 0, searchMs: 0, diversificationMs: 0, verificationMs: 0 };
+  let lapAt = clock();
+  const lap = (): number => {
+    const now = clock();
+    const elapsed = now - lapAt;
+    lapAt = now;
+    return elapsed;
+  };
+
+  // 1. Construction with bounded fallbacks and retries.
   const built = new Map<StrategyId, ConstructResult>();
+  const constructionMethods: Partial<Record<StrategyId, ConstructionMethod>> = {};
   let bestPartial: ConstructResult | null = null;
   for (const strategy of strategies) {
-    const result = buildBaseline(ctx, strategy);
-    if (result.unplaced.size === 0) built.set(strategy.id, result);
-    else if (bestPartial === null || result.unplaced.size < bestPartial.unplaced.size) bestPartial = result;
+    const baseline = buildBaseline(ctx, strategy, { seed, clock, deadline: hardDeadline });
+    if (baseline.result.unplaced.size === 0) {
+      built.set(strategy.id, baseline.result);
+      constructionMethods[strategy.id] = baseline.method;
+    } else if (bestPartial === null || baseline.result.unplaced.size < bestPartial.unplaced.size) bestPartial = baseline.result;
   }
-  if (built.size === 0 && bestPartial !== null) {
-    const partial: ConstructResult = bestPartial;
-    const unplaced: UnplacedMatch[] = [...partial.unplaced].map(([m, reason]) => ({ matchId: ctx.matches[m]!.id, reason }));
-    const lockedProblems = [...partial.unplaced].filter(([m]) => ctx.locked.has(m)).map(([m]) => ctx.matches[m]!.id);
+  timing.constructionMs = lap();
+  if (built.size === 0) {
     return emptyResult("no_schedule", seed, clock() - startedAt, inventory, {
-      failure: { unplaced, feasibility: analyzeFeasibility(constraints.inventory), lockedProblems },
+      failure: explainFailure(ctx, constraints.inventory, bestPartial),
       warnings: [...constraints.warnings],
     });
   }
-
-  if (built.size === 0) return emptyResult("no_schedule", seed, clock() - startedAt, inventory, { warnings: [...constraints.warnings] });
 
   // 2. Local search per strategy.
   const searchStrategies = strategies.filter((s) => built.has(s.id));
@@ -139,6 +151,8 @@ export function optimizeSchedules(inventory: Inventory, options: OptimizeOptions
     });
   }
 
+  timing.searchMs = lap();
+
   // 3. Verification by the independent validators.
   const rejected: NonNullable<OptimizeResult["rejected"]> = [];
   const verified: Candidate[] = [];
@@ -159,6 +173,8 @@ export function optimizeSchedules(inventory: Inventory, options: OptimizeOptions
     }
   }
 
+  timing.verificationMs = lap();
+
   // 4. Distinctness: detect equivalent options and try to produce real alternatives.
   const diversityAttempts = options.diversityAttempts ?? 2;
   for (let attempt = 1; attempt <= diversityAttempts; attempt++) {
@@ -174,9 +190,18 @@ export function optimizeSchedules(inventory: Inventory, options: OptimizeOptions
     verified[at] = { ...reworked, attempts: attempt };
   }
 
+  // 5. Fastest Finish must not finish later than another returned option: if one does, continue
+  // from that option's schedule under Fastest Finish weights. Any exception is disclosed below.
+  const finishPass = ensureEarliestFinish(ctx, verified, { iterations, clock, hardDeadline, seed }, (state) =>
+    verify(inventory, constraints.inventory, constraints.locked, instructions, state).valid,
+  );
+  if (finishPass.replacement) verified[verified.findIndex((c) => c.strategy.id === "fastest_finish")] = finishPass.replacement;
+  timing.diversificationMs = lap();
+
   const ordered = [...verified].sort((a, b) => STRATEGY_ORDER.indexOf(a.strategy.id) - STRATEGY_ORDER.indexOf(b.strategy.id));
   const optionsOut = ordered.map((c): ScheduleOption => toOption(ctx, c));
   const comparison = compare(ordered, optionsOut, thresholds, ctx, diversityAttempts, rejected.length, strategies.length);
+  if (finishPass.exception) comparison.explanation.push(finishPass.exception);
 
   const elapsedMs = clock() - startedAt;
   const finishBest = ordered.length === 0 ? null : Math.min(...ordered.map((c) => c.metrics.finishMinute));
@@ -196,11 +221,14 @@ export function optimizeSchedules(inventory: Inventory, options: OptimizeOptions
       finishGapToLowerBound: finishBest === null ? null : finishBest - lower,
       warnings: [...constraints.warnings],
       budgetOverrunMs: capMs === undefined ? 0 : Math.max(0, elapsedMs - capMs),
+      timing: { ...timing, totalMs: elapsedMs },
+      timeLimited: optionsOut.some((o) => o.budgetExhausted),
+      construction: constructionMethods,
     },
   };
   if (ordered.length === 0) {
     // Every candidate failed independent verification (for example a lock that contradicts another rule).
-    result.failure = { unplaced: [], feasibility: analyzeFeasibility(constraints.inventory), lockedProblems: [] };
+    result.failure = explainFailure(ctx, constraints.inventory, null);
   }
   if (rejected.length > 0) result.rejected = rejected;
   return result;
@@ -258,6 +286,9 @@ function emptyResult(
       finishGapToLowerBound: null,
       warnings: warnings ?? [],
       budgetOverrunMs: 0,
+      timing: { constructionMs: 0, searchMs: 0, diversificationMs: 0, verificationMs: 0, totalMs: elapsedMs },
+      timeLimited: false,
+      construction: {},
     },
     ...rest,
   };
@@ -269,23 +300,128 @@ function emptyResult(
  * the last resort is the Fastest Finish weights, whose schedule the local
  * search then reshapes under the strategy's own weights.
  */
-function buildBaseline(ctx: PlanContext, strategy: Strategy): ConstructResult {
+function buildBaseline(
+  ctx: PlanContext,
+  strategy: Strategy,
+  recovery: { seed: number; clock: () => number; deadline: number | undefined },
+): { result: ConstructResult; method: ConstructionMethod } {
   const fastest = STRATEGIES.fastest_finish;
-  const attempts: ConstructOptions[] = [
-    { order: "critical", weights: strategy.weights, candidatesPerCourt: strategy.candidatesPerCourt },
-    { order: "time", weights: strategy.weights, candidatesPerCourt: strategy.candidatesPerCourt },
-    { order: "critical", weights: strategy.weights, candidatesPerCourt: 1 },
-    { order: "critical", weights: fastest.weights, candidatesPerCourt: 1 },
-    { order: "time", weights: fastest.weights, candidatesPerCourt: 1 },
-    { order: "tail", weights: fastest.weights, candidatesPerCourt: 1 },
+  const deterministic: [ConstructOptions, ConstructionMethod][] = [
+    [{ order: "critical", weights: strategy.weights, candidatesPerCourt: strategy.candidatesPerCourt }, "strategy_weights"],
+    [{ order: "time", weights: strategy.weights, candidatesPerCourt: strategy.candidatesPerCourt }, "strategy_weights"],
+    [{ order: "critical", weights: strategy.weights, candidatesPerCourt: 1 }, "strategy_weights"],
+    [{ order: "critical", weights: fastest.weights, candidatesPerCourt: 1 }, "fastest_finish_weights"],
+    [{ order: "time", weights: fastest.weights, candidatesPerCourt: 1 }, "fastest_finish_weights"],
+    [{ order: "tail", weights: fastest.weights, candidatesPerCourt: 1 }, "fastest_finish_weights"],
   ];
   let best: ConstructResult | null = null;
-  for (const attempt of attempts) {
+  for (const [attempt, method] of deterministic) {
     const result = construct(ctx, attempt);
-    if (result.unplaced.size === 0) return result;
+    if (result.unplaced.size === 0) return { result, method };
     if (best === null || result.unplaced.size < best.unplaced.size) best = result;
   }
-  return best!;
+  // Bounded recovery for difficult cases: seeded, randomised placements that vary the order, the
+  // weights and the number of candidates. They stop at the time cap and are limited in number, so
+  // failing here means "not found", never "impossible".
+  for (let r = 0; r < RECOVERY_ATTEMPTS; r++) {
+    if (recovery.deadline !== undefined && recovery.clock() >= recovery.deadline) break;
+    const result = construct(ctx, {
+      order: r % 2 === 0 ? "critical" : "time",
+      weights: r % 3 === 0 ? strategy.weights : fastest.weights,
+      candidatesPerCourt: 1 + (r % 3),
+      noise: 0.6,
+      random: createRandom(recovery.seed * 31 + r + 1),
+    });
+    if (result.unplaced.size === 0) return { result, method: "randomized_retry" };
+    if (result.unplaced.size < best!.unplaced.size) best = result;
+  }
+  return { result: best!, method: "randomized_retry" };
+}
+
+/** Classifies a failure honestly: a proof, a contradiction in the instructions, or "not found". */
+function explainFailure(ctx: PlanContext, effective: Inventory, partial: ConstructResult | null): FailureReport {
+  const feasibility = analyzeFeasibility(effective);
+  const unplaced: UnplacedMatch[] = partial ? [...partial.unplaced].map(([m, reason]) => ({ matchId: ctx.matches[m]!.id, reason })) : [];
+  const lockedProblems = partial ? [...partial.unplaced].filter(([m]) => ctx.locked.has(m)).map(([m]) => ctx.matches[m]!.id) : [];
+  const proof: string[] = feasibility.checks.filter((c) => !c.passed).map((c) => c.message);
+  ctx.matches.forEach((match, i) => {
+    if (ctx.allowedCourts[i]!.every((court) => ctx.startRanges(i, court).length === 0)) {
+      proof.push(`${match.id} has no court and start time that satisfy court availability, division windows and the mandatory instructions`);
+    }
+  });
+
+  if (lockedProblems.length > 0) {
+    return {
+      kind: "contradictory_instructions",
+      statement: `The locked placements of ${lockedProblems.join(", ")} contradict the tournament rules or other instructions. Move or remove the locks.`,
+      proof,
+      unplaced,
+      feasibility,
+      lockedProblems,
+    };
+  }
+  if (proof.length > 0) {
+    return {
+      kind: "proven_infeasible",
+      statement: "No schedule exists: at least one necessary condition fails. This is a proof, not a search outcome. Each failed condition is listed in `proof`, with the remedies in `feasibility`.",
+      proof,
+      unplaced,
+      feasibility,
+      lockedProblems,
+    };
+  }
+  return {
+    kind: "not_found",
+    statement:
+      "No schedule was found. The construction heuristics, including bounded randomised retries, did not place every match. This is NOT a proof that no schedule exists: relaxing mandatory windows or court rules, adding court time or day length, or raising the budget may succeed.",
+    proof: [],
+    unplaced,
+    feasibility,
+    lockedProblems,
+  };
+}
+
+/**
+ * Fastest Finish should not finish later than another returned option. If it does, continue from the
+ * earliest-finishing option's schedule under Fastest Finish weights. Returns a disclosure when that fails.
+ */
+function ensureEarliestFinish(
+  ctx: PlanContext,
+  verified: readonly Candidate[],
+  budget: { iterations: number; clock: () => number; hardDeadline: number | undefined; seed: number },
+  isValid: (state: PlacementState) => boolean,
+): { replacement?: Candidate; exception?: string } {
+  const fastest = verified.find((c) => c.strategy.id === "fastest_finish");
+  if (!fastest) return {};
+  const earliest = verified.reduce((best, c) => (c.metrics.finishMinute < best.metrics.finishMinute ? c : best), fastest);
+  if (earliest.metrics.finishMinute >= fastest.metrics.finishMinute) return {};
+
+  const strategy = STRATEGIES.fastest_finish;
+  const remaining = budget.hardDeadline === undefined ? undefined : Math.max(0, budget.hardDeadline - budget.clock());
+  const result = localSearch(ctx, earliest.state, {
+    weights: amplified(strategy, [], 1),
+    random: createRandom(budget.seed * 104729 + 7),
+    maxIterations: budget.iterations,
+    ...(remaining === undefined ? {} : { deadline: budget.clock() + remaining / 2 }),
+    clock: budget.clock,
+  });
+  if (isValid(result.state) && result.metrics.finishMinute <= earliest.metrics.finishMinute) {
+    return {
+      replacement: {
+        strategy,
+        state: result.state,
+        metrics: result.metrics,
+        cost: objectiveCost(result.metrics, strategy.weights),
+        search: result,
+        attempts: fastest.attempts,
+        budgetExhausted: result.stopReason === "time",
+      },
+    };
+  }
+  const gap = Math.round(fastest.metrics.finishMinute - earliest.metrics.finishMinute);
+  return {
+    exception: `Fastest Finish finishes ${gap} minutes later than ${earliest.strategy.name}. A continuation search from that schedule under Fastest Finish weights could not reproduce its finish, so Fastest Finish does not hold the earliest finish in this result.`,
+  };
 }
 
 function verify(

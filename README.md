@@ -77,6 +77,7 @@ npm install
 npm run check     # typecheck + all tests
 npm run build     # emits dist/
 npm run bench     # optimizer benchmark; prints the hardware and Node version it ran on
+npm run acceptance  # 288-match operational acceptance report (docs/acceptance/milestone-2-acceptance.md)
 ```
 
 Requires Node 20+. Dev dependencies: TypeScript, Vitest, fast-check.

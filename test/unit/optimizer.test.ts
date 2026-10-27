@@ -337,16 +337,38 @@ describe("optimizer: failure and degradation", () => {
     expect(result.options.map((o) => o.strategy)).toEqual(["balanced_operations"]);
   });
 
-  it("a lock on a court the instructions forbid is reported as a locked-placement problem, with a failure report", () => {
+  it("a lock that contradicts another instruction is rejected up front with an actionable message", () => {
     const inventory = build();
     const match = inventory.matches[0]!;
     const result = run(inventory, [
       mandatory({ id: "lock", kind: "locked_placement", matchId: match.id, courtId: "C2", day: DAY1, start: 8 * 60 }),
       mandatory({ id: "only-c1", kind: "court_allowlist", selector: { matchIds: [match.id] }, courtIds: ["C1"] }),
     ]);
-    expect(result.status).toBe("no_schedule");
-    expect(result.failure!.lockedProblems).toContain(match.id);
-    expect(result.failure!.unplaced.some((u) => u.reason.includes("locked placement"))).toBe(true);
+    expect(result.status).toBe("invalid_instructions");
+    const issue = result.instructionIssues!.find((i) => i.code === "LOCKED_OUTSIDE_RULES")!;
+    expect(issue.message).toContain("only-c1");
+    expect(issue.message).toMatch(/Change the locked court or the allowlist/);
+  });
+
+  it("explains each kind of lock contradiction and two overlapping locks", () => {
+    const inventory = build();
+    const [first, second] = inventory.matches;
+    const issues = (list: SchedulingInstruction[]) => run(inventory, list).instructionIssues ?? [];
+    const lock = (id: string, matchId: string, courtId: string, start: number) =>
+      mandatory({ id, kind: "locked_placement", matchId, courtId, day: DAY1, start });
+
+    expect(issues([lock("l", first!.id, "C1", 3 * 60)]).map((i) => i.message).join(" ")).toMatch(/availability window/);
+    expect(
+      issues([lock("l", first!.id, "C1", 9 * 60), mandatory({ id: "bo", kind: "court_blackout", courtIds: ["C1"], window: { day: DAY1, start: 9 * 60, end: 10 * 60 } })])
+        .map((i) => i.message)
+        .join(" "),
+    ).toMatch(/blackout bo/);
+    expect(
+      issues([lock("l", first!.id, "C1", 9 * 60), mandatory({ id: "tw", kind: "time_window", selector: { matchIds: [first!.id] }, latestEnd: { minute: 9 * 60 } })])
+        .map((i) => i.message)
+        .join(" "),
+    ).toMatch(/ends after the latest allowed end set by tw/);
+    expect(issues([lock("a", first!.id, "C1", 9 * 60), lock("b", second!.id, "C1", 9 * 60 + 10)]).map((i) => i.code)).toContain("CONFLICTING_LOCKS");
   });
 
   it("an off-grid window start is still usable (granularity does not cause false infeasibility)", () => {

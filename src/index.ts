@@ -67,3 +67,5 @@ export type {
 export { STRATEGIES, STRATEGY_ORDER, type Strategy, type StrategyId } from "./optimizer/strategies.js";
 export { computeMetrics, type ScheduleMetrics, type Weights } from "./optimizer/metrics.js";
 export { assignmentDistance, dominance, materialDifferences, DEFAULT_THRESHOLDS, type DistinctnessThresholds, type Headline, type Dominance } from "./optimizer/compare.js";
+export { analyzeSchedule, type ScheduleReport, type ReportOptions, type CourtUsage, type RecoveryGap, type TeamWait, type DivisionTimeline, type ReportWarning, type WarningCode, type Moment } from "./optimizer/report.js";
+export type { FailureReport, ConstructionMethod } from "./optimizer/types.js";

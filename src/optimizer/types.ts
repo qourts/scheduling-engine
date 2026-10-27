@@ -104,6 +104,36 @@ export interface OptimizeDiagnostics {
   warnings: InstructionIssue[];
   /** Milliseconds by which the run exceeded `budget.totalMs` (construction and verification are not interruptible). 0 when within budget. */
   budgetOverrunMs: number;
+  /** Wall-clock time per phase, in milliseconds. Construction and verification are not covered by the search time cap. */
+  timing: { constructionMs: number; searchMs: number; diversificationMs: number; verificationMs: number; totalMs: number };
+  /** True when the time budget ended any search early: the options are valid but may be improvable. */
+  timeLimited: boolean;
+  /** How each strategy's starting schedule was constructed (see `ConstructionMethod`). */
+  construction: Partial<Record<StrategyId, ConstructionMethod>>;
+}
+
+/**
+ * Which construction attempt produced a strategy's starting schedule.
+ * `strategy_weights` is the normal path; the others are bounded fallbacks that
+ * exist because greedy construction can fail on tight events.
+ */
+export type ConstructionMethod = "strategy_weights" | "fastest_finish_weights" | "randomized_retry";
+
+/**
+ * Why no schedule was returned. The kinds are deliberately distinct:
+ * - `proven_infeasible`: a necessary condition fails, so no schedule exists (a proof).
+ * - `contradictory_instructions`: locked placements contradict each other or other rules.
+ * - `not_found`: the heuristics did not place every match. This is NOT a proof of impossibility.
+ */
+export interface FailureReport {
+  kind: "proven_infeasible" | "contradictory_instructions" | "not_found";
+  /** Plain-language statement of what is and is not established. */
+  statement: string;
+  /** The failed necessary conditions behind a `proven_infeasible` result; empty otherwise. */
+  proof: string[];
+  unplaced: UnplacedMatch[];
+  feasibility: FeasibilityReport;
+  lockedProblems: Id[];
 }
 
 export type OptimizeStatus = "ok" | "no_schedule" | "invalid_instructions" | "invalid_options";
@@ -116,7 +146,7 @@ export interface OptimizeResult {
   comparison: Comparison;
   diagnostics: OptimizeDiagnostics;
   /** Present when `status` is "no_schedule": what could not be placed, and the feasibility analysis. */
-  failure?: { unplaced: UnplacedMatch[]; feasibility: FeasibilityReport; lockedProblems: Id[] };
+  failure?: FailureReport;
   /** Present when `status` is "invalid_options": every problem found in the options. */
   optionIssues?: string[];
   /** Present when `status` is "invalid_instructions". */

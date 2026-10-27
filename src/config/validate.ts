@@ -155,6 +155,9 @@ export function validateConfig(config: TournamentConfig): ConfigValidationResult
     const teamSize = category?.discipline === "singles" ? 1 : category?.discipline === "doubles" ? 2 : undefined;
 
     positiveInt(division.matchDurationMinutes, `${path}.matchDurationMinutes`, "INVALID_DURATION");
+    if (division.medalMatchDurationMinutes !== undefined) {
+      positiveInt(division.medalMatchDurationMinutes, `${path}.medalMatchDurationMinutes`, "INVALID_DURATION");
+    }
     if (division.minRestMinutes !== undefined) nonNegativeInt(division.minRestMinutes, `${path}.minRestMinutes`, "INVALID_REST");
     if (![1, 3, 5].includes(division.scoring?.bestOf as number)) {
       error("INVALID_SCORING", `${path}.scoring.bestOf`, "bestOf must be 1, 3 or 5");

@@ -82,7 +82,8 @@ export function analyzeFeasibility(inventory: Inventory): FeasibilityReport {
 
   for (const ctx of contexts) {
     const { division, matches, rest, courtIntervals } = ctx;
-    const d = division.matchDurationMinutes;
+    // Relaxations use the shortest match of the division so that a longer medal match can never make a proof unsound.
+    const d = Math.min(division.matchDurationMinutes, division.medalMatchDurationMinutes ?? division.matchDurationMinutes);
     const longest = Math.max(0, ...courtIntervals.flat().map((i) => i.end - i.start));
 
     // 1. Every match must fit inside a single usable window.
@@ -301,7 +302,7 @@ function sharedCapacityChecks(contexts: DivisionContext[], turnover: number, con
   for (const [key, courtIds] of sets) {
     const members = contexts.filter((ctx) => courtSetOf(ctx.division).every((id) => courtIds.includes(id)));
     if (members.length < 2) continue;
-    const demand = members.reduce((s, ctx) => s + ctx.matches.length * (ctx.division.matchDurationMinutes + turnover), 0);
+    const demand = members.reduce((s, ctx) => s + ctx.matches.reduce((sum, m) => sum + m.durationMinutes + turnover, 0), 0);
     // Supply: every court of the set, during any window in which some member division may play.
     const supply = courtIds.reduce((s, courtId) => {
       const windows = mergeIntervals(
@@ -368,7 +369,7 @@ function playerLoadChecks(
     for (const teamId of teamIds) {
       const ctx = ctxByDivision.get(inventory.divisionOfTeam.get(teamId)!)!;
       needed += maxMatchesForTeam(teamId, ctx.matches, graph, participants);
-      minDuration = Math.min(minDuration, ctx.division.matchDurationMinutes);
+      minDuration = Math.min(minDuration, ctx.division.matchDurationMinutes, ctx.division.medalMatchDurationMinutes ?? ctx.division.matchDurationMinutes);
       rest = Math.min(rest, ctx.rest);
       windows = windows.concat(ctx.courtIntervals.flat());
     }

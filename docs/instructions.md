@@ -52,6 +52,8 @@ Roles are derived from the bracket structure, so "medal matches" works for every
 
 `validateInstructions(inventory, instructions)` never throws. It returns structured issues (`severity`, `code`, `instructionId`, `message`) for unknown IDs, bad times, duplicate IDs, empty lists, contradictory bounds, invalid weights, conflicting locks and unsupported mandatory kinds. Warnings (an empty selection, a lowered minimum rest) do not block scheduling. Instructions with an error are never passed to the optimizer.
 
+Contradictions between a locked placement and the rest are reported before scheduling, each naming the instruction and what to change: a lock outside court availability or division windows, on a court another mandatory instruction forbids or reserves, inside a blackout, outside a mandatory time window, two locks that overlap on a court, or two locked dependent matches that break the dependency-plus-rest order. An unsupported instruction kind is reported as an error that names the supported kinds; it is never silently ignored. "Morning" and similar words are not interpreted: use explicit `TimeBound` values (for example a `latestEnd` clock bound of 12:00).
+
 ## How instructions are enforced
 
 `compileInstructions` produces an effective tournament configuration for rules that map onto existing ones (court blackouts shrink availability, a mandatory minimum rest replaces the division value) and per-match limits (allowed courts, allowed start ranges) for the rest. The original configuration is never mutated.

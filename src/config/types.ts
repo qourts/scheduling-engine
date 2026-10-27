@@ -102,6 +102,11 @@ export interface Division {
   stages: StageConfig[];
   /** Court time allocated per match, in minutes (playing time plus warm-up). */
   matchDurationMinutes: number;
+  /**
+   * Court time allocated to the final and the third-place match, when it differs
+   * from `matchDurationMinutes` (for example best of 3 for medals). Optional.
+   */
+  medalMatchDurationMinutes?: number;
   scoring: ScoringRules;
   standings: StandingsRules;
   /** Overrides `rules.minRestMinutes` for players while playing in this division. */
