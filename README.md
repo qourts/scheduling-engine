@@ -99,4 +99,5 @@ An internal, local-first operator application in [`apps/web`](apps/web) built on
 - [Assumptions and known limitations](docs/limitations.md)
 - [Tracked future requirements](docs/future-requirements.md)
 - [Smart Scheduler design system and redesign](docs/design/README.md)
+- [Hosted preview on GitHub Pages](docs/hosted-preview.md)
 - [Architecture decision records](docs/adr/)
