@@ -10,7 +10,14 @@ export interface AiStatus {
   available: boolean;
 }
 
-export async function aiStatus(fetchImpl: typeof fetch = fetch): Promise<AiStatus> {
+/**
+ * True in the static hosted preview (built with VITE_DISABLE_AI=true). There is no backend there, so the interpreter is
+ * switched off without making any request, and no key or secret can exist in the browser bundle.
+ */
+export const AI_DISABLED_IN_BUILD = import.meta.env.VITE_DISABLE_AI === "true";
+
+export async function aiStatus(fetchImpl: typeof fetch = fetch, disabled: boolean = AI_DISABLED_IN_BUILD): Promise<AiStatus> {
+  if (disabled) return { available: false };
   try {
     const res = await fetchImpl("/api/interpret/status", { headers: { accept: "application/json" } });
     if (!res.ok) return { available: false };

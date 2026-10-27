@@ -34,7 +34,7 @@ export const Progress = ({ label }: { label: string }) => <div className="progre
  * The official Qourts logo, unmodified, on a light plate. The artwork is transparent with a dark-grey tagline meant for light
  * backgrounds, so it sits on a plate inside the navy shell rather than being recoloured or cropped.
  */
-export const LOGO_SRC = "/brand/qourts-official-logo.webp";
+export const LOGO_SRC = `${import.meta.env.BASE_URL}brand/qourts-official-logo.webp`;
 export const LOGO_ALT = "Qourts: Smart Queues, Better Games.";
 
 export const Pill = ({ tone, children }: { tone?: Tone | undefined; children: ReactNode }) => <span className={`pill ${tone ?? ""}`}>{children}</span>;

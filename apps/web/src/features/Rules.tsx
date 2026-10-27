@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { InstructionBody, InstructionIssue, InstructionVocabulary, SchedulingInstruction } from "@engine";
-import { aiInterpret, aiStatus } from "../nlp/adapter.js";
+import { AI_DISABLED_IN_BUILD, aiInterpret, aiStatus } from "../nlp/adapter.js";
 import { DEFAULT_PREFERENCE_WEIGHT, finalizeRule } from "../nlp/finalize.js";
 import { SUPPORTED_PATTERNS, parseInstructions, type Interpretation } from "../nlp/parser.js";
 import { newId } from "../domain/project.js";
@@ -118,7 +118,11 @@ export function Rules({ onNext }: { onNext: () => void }) {
             </div>
           </div>
         )}
-        {ai === false && <p className="faint">AI interpretation is not set up. The built-in interpreter understands the patterns below, and you can always build a rule by hand.</p>}
+        {ai === false && (
+          <p className="faint">
+            {AI_DISABLED_IN_BUILD ? "AI interpretation is not available in this hosted preview, which has no backend." : "AI interpretation is not set up."} The built-in interpreter understands the patterns below, and you can always build a rule by hand.
+          </p>
+        )}
         {aiError && <Banner tone="warn" title="AI interpretation failed">{aiError}</Banner>}
         <details>
           <summary>Phrases the built-in interpreter understands</summary>

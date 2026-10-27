@@ -1,0 +1,64 @@
+name: Deploy preview to GitHub Pages
+
+# Publishes the Smart Scheduler from the redesign branch as a static preview at
+# https://qourts.github.io/scheduling-engine/ . It does not touch main and uses only synthetic example data.
+on:
+  push:
+    branches: [ui/qourts-redesign]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Engine checks
+        run: |
+          npm run typecheck
+          npm test
+          npm run build
+      - name: App checks
+        run: |
+          npm run typecheck -w apps/web
+          npm test -w apps/web
+      - name: Security audit
+        run: npm audit --audit-level=high
+      - name: Build the static preview
+        run: npm run build -w apps/web
+        env:
+          # No backend exists on static hosting, so the optional AI interpreter is switched off in this build.
+          VITE_DISABLE_AI: "true"
+      - name: Verify the build is subpath-safe and secret-free
+        run: |
+          grep -q 'src="/scheduling-engine/assets/' apps/web/dist/index.html
+          if grep -q 'src="/assets/' apps/web/dist/index.html; then echo "root-relative asset path found"; exit 1; fi
+          test -f apps/web/dist/brand/qourts-official-logo.webp
+          if grep -rIlE 'sk-ant|ANTHROPIC_API_KEY|x-api-key' apps/web/dist; then echo "possible secret or API-key reference in the bundle"; exit 1; fi
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
